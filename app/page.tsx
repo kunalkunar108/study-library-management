@@ -144,6 +144,88 @@ export default function Home() {
     const url = URL.createObjectURL(blob); const link = document.createElement("a"); link.href = url; link.download = "studydesk-backup-" + new Date().toISOString().slice(0, 10) + ".json"; link.click(); URL.revokeObjectURL(url);
     setNotice("Demo backup downloaded as JSON.");
   }
+  function loadDemoData() {
+    if (!window.confirm("Load the complete StudyDesk presentation dataset? This will replace the records currently saved in this browser with fictional sample data. Download a backup first if you need your current records.")) return;
+    const day = (offset: number) => { const d = new Date(); d.setHours(12,0,0,0); d.setDate(d.getDate() + offset); return d.toISOString().slice(0,10); };
+    const sampleStudents: Student[] = [
+      { id: "STU-2501", name: "Aarav Kumar", phone: "9000001001", branchId: "BR-001", plan: "Monthly", admissionDate: day(-45), status: "Active" },
+      { id: "STU-2502", name: "Priya Kumari", phone: "9000001002", branchId: "BR-001", plan: "Quarterly", admissionDate: day(-70), status: "Active" },
+      { id: "STU-2503", name: "Rohan Sinha", phone: "9000001003", branchId: "BR-002", plan: "Monthly", admissionDate: day(-20), status: "Active" },
+      { id: "STU-2504", name: "Ananya Das", phone: "9000001004", branchId: "BR-002", plan: "Half-yearly", admissionDate: day(-95), status: "Active" },
+      { id: "STU-2505", name: "Rahul Raj", phone: "9000001005", branchId: "BR-003", plan: "Monthly", admissionDate: day(-12), status: "Active" },
+      { id: "STU-2506", name: "Sneha Kumari", phone: "9000001006", branchId: "BR-001", plan: "Monthly", admissionDate: day(-30), status: "Active" },
+      { id: "STU-2507", name: "Vikash Yadav", phone: "9000001007", branchId: "BR-003", plan: "Quarterly", admissionDate: day(-55), status: "Active" },
+      { id: "STU-2508", name: "Neha Sharma", phone: "9000001008", branchId: "BR-002", plan: "Monthly", admissionDate: day(-8), status: "Active" },
+      { id: "STU-2509", name: "Amit Kumar", phone: "9000001009", branchId: "BR-001", plan: "Monthly", admissionDate: day(-110), status: "Inactive" },
+      { id: "STU-2510", name: "Pooja Singh", phone: "9000001010", branchId: "BR-003", plan: "Half-yearly", admissionDate: day(-130), status: "Active" }
+    ];
+    const samplePlans: MembershipPlan[] = [
+      { id: "PLAN-MON", name: "Monthly", durationDays: 30, fee: 500, active: true },
+      { id: "PLAN-QTR", name: "Quarterly", durationDays: 90, fee: 1300, active: true },
+      { id: "PLAN-HALF", name: "Half-yearly", durationDays: 180, fee: 2400, active: true },
+      { id: "PLAN-YEAR", name: "Yearly", durationDays: 365, fee: 4200, active: true }
+    ];
+    const membershipSpecs = [
+      ["MEM-2501","STU-2501","PLAN-MON","BR-001",-20,9,500],
+      ["MEM-2502","STU-2502","PLAN-QTR","BR-001",-65,25,1300],
+      ["MEM-2503","STU-2503","PLAN-MON","BR-002",-12,18,500],
+      ["MEM-2504","STU-2504","PLAN-HALF","BR-002",-90,90,2400],
+      ["MEM-2505","STU-2505","PLAN-MON","BR-003",-10,20,500],
+      ["MEM-2506","STU-2506","PLAN-MON","BR-001",-28,2,500],
+      ["MEM-2507","STU-2507","PLAN-QTR","BR-003",-50,40,1300],
+      ["MEM-2508","STU-2508","PLAN-MON","BR-002",-5,25,500],
+      ["MEM-2509","STU-2509","PLAN-MON","BR-001",-80,-50,500],
+      ["MEM-2510","STU-2510","PLAN-HALF","BR-003",-120,60,2400]
+    ] as const;
+    const sampleMemberships: Membership[] = membershipSpecs.map(([id,studentId,planId,branchId,startOffset,endOffset,fee]) => ({ id, studentId, planId, branchId, startDate: day(startOffset), endDate: day(endOffset), fee }));
+    const samplePayments: FeePayment[] = [
+      { id:"PAY-2501",membershipId:"MEM-2501",studentId:"STU-2501",branchId:"BR-001",date:day(-18),amount:300,method:"UPI",reference:"DEMO-UPI-2501",note:"Part payment" },
+      { id:"PAY-2502",membershipId:"MEM-2501",studentId:"STU-2501",branchId:"BR-001",date:day(-5),amount:200,method:"Cash",reference:"",note:"Balance cleared" },
+      { id:"PAY-2503",membershipId:"MEM-2502",studentId:"STU-2502",branchId:"BR-001",date:day(-60),amount:1300,method:"UPI",reference:"DEMO-UPI-2502",note:"Quarterly fee" },
+      { id:"PAY-2504",membershipId:"MEM-2503",studentId:"STU-2503",branchId:"BR-002",date:day(-10),amount:250,method:"Cash",reference:"",note:"Part payment" },
+      { id:"PAY-2505",membershipId:"MEM-2504",studentId:"STU-2504",branchId:"BR-002",date:day(-85),amount:2400,method:"Bank transfer",reference:"DEMO-BANK-2504",note:"Half-yearly fee" },
+      { id:"PAY-2506",membershipId:"MEM-2505",studentId:"STU-2505",branchId:"BR-003",date:day(-8),amount:500,method:"UPI",reference:"DEMO-UPI-2505",note:"Monthly fee" },
+      { id:"PAY-2507",membershipId:"MEM-2506",studentId:"STU-2506",branchId:"BR-001",date:day(-25),amount:500,method:"Cash",reference:"",note:"Monthly fee" },
+      { id:"PAY-2508",membershipId:"MEM-2507",studentId:"STU-2507",branchId:"BR-003",date:day(-45),amount:700,method:"UPI",reference:"DEMO-UPI-2507",note:"Part payment" },
+      { id:"PAY-2509",membershipId:"MEM-2508",studentId:"STU-2508",branchId:"BR-002",date:day(-3),amount:500,method:"Cash",reference:"",note:"Monthly fee" },
+      { id:"PAY-2510",membershipId:"MEM-2510",studentId:"STU-2510",branchId:"BR-003",date:day(-100),amount:1200,method:"Bank transfer",reference:"DEMO-BANK-2510",note:"First instalment" }
+    ];
+    const sampleSeats: Seat[] = [
+      { id:"SEAT-001",branchId:"BR-001",number:"A-01",mode:"Fixed",active:true,allocations:[{studentId:"STU-2501",shift:"Full day"}] },
+      { id:"SEAT-002",branchId:"BR-001",number:"A-02",mode:"Fixed",active:true,allocations:[{studentId:"STU-2502",shift:"Full day"}] },
+      { id:"SEAT-003",branchId:"BR-001",number:"A-03",mode:"Shift-based",active:true,allocations:[{studentId:"STU-2506",shift:"Morning"},{studentId:"STU-2501",shift:"Evening"}] },
+      { id:"SEAT-004",branchId:"BR-002",number:"B-01",mode:"Fixed",active:true,allocations:[{studentId:"STU-2503",shift:"Full day"}] },
+      { id:"SEAT-005",branchId:"BR-002",number:"B-02",mode:"Shift-based",active:true,allocations:[{studentId:"STU-2504",shift:"Morning"},{studentId:"STU-2508",shift:"Evening"}] },
+      { id:"SEAT-006",branchId:"BR-003",number:"C-01",mode:"Fixed",active:true,allocations:[{studentId:"STU-2505",shift:"Full day"}] },
+      { id:"SEAT-007",branchId:"BR-003",number:"C-02",mode:"Fixed",active:true,allocations:[] }
+    ];
+    const sampleAdmissions: Admission[] = [
+      { id:"ADM-2501",name:"Kavita Kumari",phone:"9000001011",branchId:"BR-001",plan:"Monthly",admissionDate:day(0),photo:"",status:"Pending" },
+      { id:"ADM-2502",name:"Saurav Kumar",phone:"9000001012",branchId:"BR-002",plan:"Quarterly",admissionDate:day(-1),photo:"",status:"Pending" },
+      { id:"ADM-2503",name:"Meena Das",phone:"9000001013",branchId:"BR-003",plan:"Monthly",admissionDate:day(-4),photo:"",status:"Rejected" },
+      { id:"ADM-2504",name:"Deepak Raj",phone:"9000001014",branchId:"BR-001",plan:"Half-yearly",admissionDate:day(-6),photo:"",status:"Approved" }
+    ];
+    const sampleAttendance: AttendanceRecord[] = [];
+    for (let offset = -6; offset <= 0; offset++) {
+      sampleStudents.filter(student => student.status === "Active").forEach((student,index) => {
+        const status: AttendanceStatus = (index + Math.abs(offset)) % 9 === 0 ? "Absent" : (index + Math.abs(offset)) % 7 === 0 ? "Late" : "Present";
+        sampleAttendance.push({ id: "ATT-" + student.id + "-" + day(offset), studentId: student.id, branchId: student.branchId, date: day(offset), status });
+      });
+    }
+    const sampleStaff: StaffMember[] = [
+      { id:"STF-2501",name:"Sanjay Kumar",phone:"9000002001",email:"sanjay.demo@example.com",address:"Dumka",branchId:"BR-001",role:"Manager",status:"Active" },
+      { id:"STF-2502",name:"Ritika Kumari",phone:"9000002002",email:"ritika.demo@example.com",address:"Dumka",branchId:"BR-001",role:"Receptionist",status:"Active" },
+      { id:"STF-2503",name:"Manoj Sinha",phone:"9000002003",email:"manoj.demo@example.com",address:"Dumka",branchId:"BR-002",role:"Librarian",status:"Active" },
+      { id:"STF-2504",name:"Pankaj Yadav",phone:"9000002004",email:"pankaj.demo@example.com",address:"Dumka",branchId:"BR-003",role:"Librarian",status:"Active" },
+      { id:"STF-2505",name:"Nisha Das",phone:"9000002005",email:"nisha.demo@example.com",address:"Dumka",branchId:"BR-002",role:"Other",status:"Inactive" }
+    ];
+    setBranches(seedBranches); setStudents(sampleStudents); setAdmissions(sampleAdmissions); setSeats(sampleSeats);
+    setPlans(samplePlans); setMemberships(sampleMemberships); setPayments(samplePayments);
+    setAttendanceRecords(sampleAttendance); setStaff(sampleStaff);
+    setLibrarySettings({ ...defaultLibrarySettings, libraryName:"StudyDesk Demo Library", logoText:"SDL", address:"Dumka, Jharkhand", ownerName:"Library Admin" });
+    setSelectedBranch("all"); setAttendanceDate(day(0)); setNotice("Presentation dataset loaded: 10 students, 3 branches, 7 seats, 10 memberships, 10 payments, 4 admissions and 5 staff. All records are fictional.");
+  }
+
   function resetDemoWorkspace() {
     if (!window.confirm("Reset this browser demo? All branches, students, admissions, seats, memberships, payments, attendance, staff and settings will be replaced with the original sample setup. This cannot be undone. Download a backup first if you need one.")) return;
     setBranches(seedBranches); setStudents(seedStudents); setAdmissions([]); setSeats([]);
@@ -570,7 +652,7 @@ export default function Home() {
               <div className="rounded-xl border border-slate-200 bg-white p-5"><div className="mb-4"><h3 className="text-[13px] font-bold text-slate-900">Library profile</h3><p className="mt-1 text-[10px] text-slate-400">Shown as the identity of this demo workspace.</p></div><div className="space-y-3"><div className="grid grid-cols-[1fr_100px] gap-3"><div><label className={labelClass}>Library name</label><input value={librarySettings.libraryName} onChange={(e)=>setLibrarySettings({...librarySettings,libraryName:e.target.value})} className={inputClass}/></div><div><label className={labelClass}>Logo initials</label><input maxLength={3} value={librarySettings.logoText} onChange={(e)=>setLibrarySettings({...librarySettings,logoText:e.target.value.toUpperCase()})} className={inputClass}/></div></div><div><label className={labelClass}>Address</label><input value={librarySettings.address} onChange={(e)=>setLibrarySettings({...librarySettings,address:e.target.value})} className={inputClass}/></div><div className="grid grid-cols-1 gap-3 sm:grid-cols-2"><div><label className={labelClass}>Contact phone</label><input value={librarySettings.phone} onChange={(e)=>setLibrarySettings({...librarySettings,phone:e.target.value})} className={inputClass}/></div><div><label className={labelClass}>Contact email</label><input type="email" value={librarySettings.email} onChange={(e)=>setLibrarySettings({...librarySettings,email:e.target.value})} className={inputClass}/></div></div><div><label className={labelClass}>Owner / admin display name</label><input value={librarySettings.ownerName} onChange={(e)=>setLibrarySettings({...librarySettings,ownerName:e.target.value})} className={inputClass}/></div><div className="rounded-lg bg-slate-50 p-3 text-[10px] text-slate-500">Preview identity: <strong>{librarySettings.libraryName || "Your library"}</strong> · {librarySettings.address || "Add an address"}</div></div></div>
               <div className="rounded-xl border border-slate-200 bg-white p-5"><div className="mb-4"><h3 className="text-[13px] font-bold text-slate-900">Operating hours</h3><p className="mt-1 text-[10px] text-slate-400">Default hours for this library workspace.</p></div><div className="grid grid-cols-2 gap-3"><div><label className={labelClass}>Opening time</label><input type="time" value={librarySettings.openingTime} onChange={(e)=>setLibrarySettings({...librarySettings,openingTime:e.target.value})} className={inputClass}/></div><div><label className={labelClass}>Closing time</label><input type="time" value={librarySettings.closingTime} onChange={(e)=>setLibrarySettings({...librarySettings,closingTime:e.target.value})} className={inputClass}/></div></div><p className="mt-3 rounded-lg bg-blue-50 px-3 py-2 text-[10px] leading-4 text-blue-800">These are workspace-wide reference hours. Separate hours for each branch are not configured in this demo.</p><div className="mt-5 border-t border-slate-100 pt-4"><div className="mb-3"><h3 className="text-[13px] font-bold text-slate-900">Attendance working days</h3><p className="mt-1 text-[10px] text-slate-400">Select the days the library normally operates.</p></div><div className="grid grid-cols-2 gap-2 sm:grid-cols-3">{weekdays.map((day)=><label key={day} className="flex items-center gap-2 rounded-lg border border-slate-100 px-3 py-2 text-[10px] text-slate-600"><input type="checkbox" checked={librarySettings.workingDays.includes(day)} onChange={(e)=>setLibrarySettings({...librarySettings,workingDays:e.target.checked?[...librarySettings.workingDays,day]:librarySettings.workingDays.filter((d)=>d!==day)})} className="accent-[#244d73]"/>{day}</label>)}</div></div></div>
               <div className="rounded-xl border border-slate-200 bg-white p-5"><div className="mb-4"><h3 className="text-[13px] font-bold text-slate-900">Default preferences</h3><p className="mt-1 text-[10px] text-slate-400">Choose the default membership plan for new assignments.</p></div><div><label className={labelClass}>Default membership plan</label><select value={librarySettings.defaultPlanId} onChange={(e)=>setLibrarySettings({...librarySettings,defaultPlanId:e.target.value})} className={inputClass}>{plans.filter((plan)=>plan.active).map((plan)=><option key={plan.id} value={plan.id}>{plan.name} · ₹{plan.fee.toLocaleString("en-IN")} · {plan.durationDays} days</option>)}</select>{plans.filter((plan)=>plan.active).length===0&&<p className="mt-2 text-[10px] text-amber-700">No active plans. Create or activate a plan in Memberships.</p>}</div><div className="mt-4 flex flex-wrap gap-2"><button onClick={()=>navTo("Memberships")} className="rounded-lg border border-slate-200 px-3 py-2 text-[10px] font-semibold text-slate-600">Manage membership plans</button><button onClick={()=>navTo("Branches")} className="rounded-lg border border-slate-200 px-3 py-2 text-[10px] font-semibold text-slate-600">Manage branches</button></div><div className="mt-4 rounded-lg bg-slate-50 p-3 text-[10px] leading-4 text-slate-500">The selected plan is a saved preference only. Existing membership fees and dates are not changed automatically.</div></div>
-              <div className="rounded-xl border border-slate-200 bg-white p-5"><div className="mb-4"><h3 className="text-[13px] font-bold text-slate-900">Data management</h3><p className="mt-1 text-[10px] text-slate-400">Back up or reset the records saved in this browser.</p></div><div className="flex flex-col gap-3 sm:flex-row"><button onClick={exportDemoBackup} className="rounded-lg bg-[#244d73] px-4 py-2.5 text-[10px] font-semibold text-white">Download full backup (JSON)</button><button onClick={resetDemoWorkspace} className="rounded-lg border border-rose-200 px-4 py-2.5 text-[10px] font-semibold text-rose-600 hover:bg-rose-50">Reset demo workspace</button></div><p className="mt-4 rounded-lg bg-amber-50 px-3 py-2 text-[10px] leading-4 text-amber-800">Important: this is a browser-only demo. Backup files may contain all information entered in the demo. Use fictional data only. Reset permanently replaces the current browser records; download a backup first if needed.</p></div>
+              <div className="rounded-xl border border-slate-200 bg-white p-5"><div className="mb-4"><h3 className="text-[13px] font-bold text-slate-900">Data management</h3><p className="mt-1 text-[10px] text-slate-400">Back up or reset the records saved in this browser.</p></div><div className="flex flex-col gap-3 sm:flex-row"><button onClick={loadDemoData} className="rounded-lg bg-emerald-700 px-4 py-2.5 text-[10px] font-semibold text-white">Load presentation demo data</button><button onClick={exportDemoBackup} className="rounded-lg bg-[#244d73] px-4 py-2.5 text-[10px] font-semibold text-white">Download full backup (JSON)</button><button onClick={resetDemoWorkspace} className="rounded-lg border border-rose-200 px-4 py-2.5 text-[10px] font-semibold text-rose-600 hover:bg-rose-50">Reset demo workspace</button></div><p className="mt-4 rounded-lg bg-amber-50 px-3 py-2 text-[10px] leading-4 text-amber-800">Important: this is a browser-only demo. Backup files may contain all information entered in the demo. Use fictional data only. Reset permanently replaces the current browser records; download a backup first if needed.</p></div>
             </div>
             <p className="mt-4 rounded-lg bg-blue-50 px-4 py-3 text-[10px] leading-4 text-blue-800">Settings are saved automatically in this browser. They are not synchronized across devices or users. Working days and operating hours are configuration references; they do not automatically block attendance marking or control opening access.</p>
           </section>}
