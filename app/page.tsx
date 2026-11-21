@@ -2,7 +2,6 @@
 
 import { useMemo, useState } from "react";
 import {
-  ArrowDownRight,
   ArrowUpRight,
   Bell,
   BookOpen,
@@ -12,7 +11,6 @@ import {
   ChevronRight,
   CircleHelp,
   Clock3,
-  CreditCard,
   Download,
   GraduationCap,
   LayoutDashboard,
