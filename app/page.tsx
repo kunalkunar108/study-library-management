@@ -10,6 +10,7 @@ import {
 } from "lucide-react";
 
 type Branch = { id: string; name: string; location: string; capacity: number; active: boolean };
+type Admission = { id: string; name: string; phone: string; branchId: string; plan: string; admissionDate: string; photo: string; status: "Pending" | "Approved" | "Rejected" };
 type Student = {
   id: string; name: string; phone: string; branchId: string; plan: string;
   admissionDate: string; status: "Active" | "Inactive";
@@ -42,6 +43,7 @@ export default function Home() {
   const [activeNav, setActiveNav] = useState("Overview");
   const [branches, setBranches] = useState<Branch[]>(seedBranches);
   const [students, setStudents] = useState<Student[]>(seedStudents);
+  const [admissions, setAdmissions] = useState<Admission[]>([]);
   const [loaded, setLoaded] = useState(false);
   const [selectedBranch, setSelectedBranch] = useState("all");
   const [mobileNavOpen, setMobileNavOpen] = useState(false);
@@ -49,6 +51,10 @@ export default function Home() {
   const [branchSearch, setBranchSearch] = useState("");
   const [showBranchForm, setShowBranchForm] = useState(false);
   const [showStudentForm, setShowStudentForm] = useState(false);
+  const [showAdmissionForm, setShowAdmissionForm] = useState(false);
+  const [admissionSearch, setAdmissionSearch] = useState("");
+  const [admissionFilter, setAdmissionFilter] = useState("all");
+  const [admissionForm, setAdmissionForm] = useState({ name: "", phone: "", branchId: seedBranches[0].id, plan: "Monthly", admissionDate: new Date().toISOString().slice(0, 10), photo: "" });
   const [editingBranch, setEditingBranch] = useState<string | null>(null);
   const [editingStudent, setEditingStudent] = useState<string | null>(null);
   const [notice, setNotice] = useState("");
@@ -62,6 +68,7 @@ export default function Home() {
         const parsed = JSON.parse(saved);
         if (Array.isArray(parsed.branches)) setBranches(parsed.branches);
         if (Array.isArray(parsed.students)) setStudents(parsed.students);
+        if (Array.isArray(parsed.admissions)) setAdmissions(parsed.admissions);
       }
     } catch {
       setNotice("Saved demo data could not be read. Sample data is loaded.");
@@ -70,8 +77,8 @@ export default function Home() {
   }, []);
 
   useEffect(() => {
-    if (loaded) localStorage.setItem("studydesk-demo-v1", JSON.stringify({ branches, students }));
-  }, [branches, students, loaded]);
+    if (loaded) localStorage.setItem("studydesk-demo-v1", JSON.stringify({ branches, students, admissions }));
+  }, [branches, students, admissions, loaded]);
 
   const branchName = (id: string) => branches.find((branch) => branch.id === id)?.name || "Branch unavailable";
   const activeBranches = branches.filter((branch) => branch.active);
@@ -156,6 +163,37 @@ export default function Home() {
     setEditingStudent(null);
   }
 
+  function openNewAdmission() {
+    setAdmissionForm({ name: "", phone: "", branchId: activeBranches[0]?.id || "", plan: "Monthly", admissionDate: new Date().toISOString().slice(0, 10), photo: "" });
+    setShowAdmissionForm(true);
+  }
+
+  function saveAdmission(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    const name = admissionForm.name.trim();
+    const phone = admissionForm.phone.trim();
+    if (!name || !/^[0-9]{10}$/.test(phone) || !branches.some((branch) => branch.id === admissionForm.branchId)) return;
+    const id = "ADM-" + String(Date.now()).slice(-6);
+    setAdmissions((current) => [{ id, ...admissionForm, name, phone, status: "Pending" }, ...current]);
+    setShowAdmissionForm(false);
+    setNotice("Admission application " + id + " submitted and marked Pending.");
+  }
+
+  function approveAdmission(admission: Admission) {
+    if (admission.status !== "Pending") return;
+    const nextNumber = Math.max(2400, ...students.map((student) => Number(student.id.replace("STU-", "")) || 0)) + 1;
+    const studentId = "STU-" + nextNumber;
+    setStudents((current) => [{ id: studentId, name: admission.name, phone: admission.phone, branchId: admission.branchId, plan: admission.plan, admissionDate: admission.admissionDate, status: "Active" }, ...current]);
+    setAdmissions((current) => current.map((item) => item.id === admission.id ? { ...item, status: "Approved" } : item));
+    setNotice(admission.name + " approved. Student ID generated: " + studentId);
+  }
+
+  function rejectAdmission(admission: Admission) {
+    if (admission.status !== "Pending") return;
+    setAdmissions((current) => current.map((item) => item.id === admission.id ? { ...item, status: "Rejected" } : item));
+    setNotice("Admission " + admission.id + " marked Rejected.");
+  }
+
   function deleteStudent(student: Student) {
     if (!window.confirm("Delete student " + student.name + "?")) return;
     setStudents((current) => current.filter((item) => item.id !== student.id));
@@ -166,7 +204,7 @@ export default function Home() {
     setActiveNav(label);
     setMobileNavOpen(false);
     setNotice("");
-    if (label === "Admissions") openNewStudent();
+    if (label === "Admissions") setAdmissionSearch("");
   };
 
   return (
@@ -210,6 +248,14 @@ export default function Home() {
             </div>
           </section>}
 
+          {activeNav === "Admissions" && <section>
+            <div className="mb-7 flex flex-col justify-between gap-4 sm:flex-row sm:items-end"><div><p className="mb-1 text-[11px] font-medium text-slate-400">ENROLMENT WORKFLOW</p><h2 className="text-[25px] font-bold tracking-tight text-slate-900">Admissions</h2><p className="mt-1.5 text-xs text-slate-500">Review applications and approve students into your library.</p></div><button onClick={openNewAdmission} disabled={activeBranches.length === 0} className="inline-flex items-center justify-center gap-2 rounded-lg bg-[#244d73] px-4 py-2.5 text-[11px] font-semibold text-white hover:bg-[#193c5e] disabled:opacity-50"><Plus size={15} /> New admission</button></div>
+            <div className="mb-5 grid grid-cols-1 gap-3 sm:grid-cols-3"><Metric label="Total applications" value={String(admissions.length)} detail="All admission records" icon={<GraduationCap size={16} />} /><Metric label="Pending review" value={String(admissions.filter((a) => a.status === "Pending").length)} detail="Awaiting a decision" icon={<AlertCircle size={16} />} /><Metric label="Approved" value={String(admissions.filter((a) => a.status === "Approved").length)} detail="Converted to students" icon={<CheckCircle2 size={16} />} /></div>
+            <div className="rounded-xl border border-slate-200 bg-white"><div className="flex flex-col gap-3 border-b border-slate-100 px-5 py-4 sm:px-6"><div><h3 className="text-[13px] font-bold text-slate-900">Admission applications</h3><p className="mt-1 text-[10px] text-slate-400">Applications are separate until approved.</p></div><div className="grid grid-cols-1 gap-2 sm:grid-cols-[1fr_190px]"><div className="relative"><Search size={13} className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" /><input value={admissionSearch} onChange={(event) => setAdmissionSearch(event.target.value)} placeholder="Search applicant, ID or phone..." className="h-9 w-full rounded-lg border border-slate-200 pl-8 pr-3 text-[10px] outline-none focus:border-[#7894ad]" /></div><select value={admissionFilter} onChange={(event) => setAdmissionFilter(event.target.value)} className="h-9 rounded-lg border border-slate-200 bg-white px-3 text-[10px] text-slate-600 outline-none"><option value="all">All statuses</option><option>Pending</option><option>Approved</option><option>Rejected</option></select></div></div>
+              <div className="overflow-x-auto"><table className="w-full min-w-[850px] text-left"><thead><tr className="bg-slate-50/80 text-[9px] font-semibold uppercase tracking-wider text-slate-400"><th className="px-5 py-3">Applicant</th><th className="px-4 py-3">Phone</th><th className="px-4 py-3">Branch</th><th className="px-4 py-3">Plan</th><th className="px-4 py-3">Applied on</th><th className="px-4 py-3">Status</th><th className="px-4 py-3">Review</th></tr></thead><tbody>{admissions.filter((a) => (admissionFilter === "all" || a.status === admissionFilter) && (a.name + " " + a.id + " " + a.phone).toLowerCase().includes(admissionSearch.toLowerCase())).map((a) => <tr key={a.id} className="border-t border-slate-100"><td className="px-5 py-3"><div className="flex items-center gap-2.5">{a.photo ? <img src={a.photo} alt="" className="h-9 w-9 rounded-full object-cover" /> : <div className="flex h-9 w-9 items-center justify-center rounded-full bg-[#edf3f8] text-[10px] font-bold text-[#315d84]">{a.name.split(" ").map((p) => p[0]).slice(0,2).join("").toUpperCase()}</div>}<div><p className="text-[10px] font-semibold text-slate-800">{a.name}</p><p className="text-[9px] text-slate-400">{a.id}</p></div></div></td><td className="px-4 py-3 text-[10px] text-slate-500">{a.phone}</td><td className="px-4 py-3 text-[10px] text-slate-500">{branchName(a.branchId)}</td><td className="px-4 py-3 text-[10px] text-slate-500">{a.plan}</td><td className="px-4 py-3 text-[10px] text-slate-500">{a.admissionDate}</td><td className="px-4 py-3"><span className={"rounded-full px-2 py-1 text-[9px] font-semibold " + (a.status === "Approved" ? "bg-emerald-50 text-emerald-700" : a.status === "Rejected" ? "bg-rose-50 text-rose-700" : "bg-amber-50 text-amber-700")}>{a.status}</span></td><td className="px-4 py-3">{a.status === "Pending" ? <div className="flex gap-1"><button onClick={() => approveAdmission(a)} className="rounded-md bg-[#244d73] px-2.5 py-1.5 text-[9px] font-semibold text-white">Approve</button><button onClick={() => rejectAdmission(a)} className="rounded-md border border-rose-200 px-2.5 py-1.5 text-[9px] font-semibold text-rose-600">Reject</button></div> : <span className="text-[9px] text-slate-400">{a.status === "Approved" ? "Student created" : "Closed"}</span>}</td></tr>)}{admissions.length === 0 && <tr><td colSpan={7} className="px-6 py-14 text-center"><p className="text-[12px] font-semibold text-slate-700">No applications yet</p><p className="mt-1 text-[10px] text-slate-400">Create a sample admission to try the review workflow.</p></td></tr>}</tbody></table></div>
+            </div>
+          </section>}
+
           {activeNav === "Students" && <section>
             <div className="mb-7 flex flex-col justify-between gap-4 sm:flex-row sm:items-end"><div><p className="mb-1 text-[11px] font-medium text-slate-400">STUDENT DIRECTORY</p><h2 className="text-[25px] font-bold tracking-tight text-slate-900">Students</h2><p className="mt-1.5 text-xs text-slate-500">Manage student profiles and view records branch-wise.</p></div><button onClick={openNewStudent} disabled={activeBranches.length === 0} className="inline-flex items-center justify-center gap-2 rounded-lg bg-[#244d73] px-4 py-2.5 text-[11px] font-semibold text-white hover:bg-[#193c5e] disabled:cursor-not-allowed disabled:opacity-50"><Plus size={15} /> Add student</button></div>
             <div className="mb-5 grid grid-cols-1 gap-3 sm:grid-cols-3"><Metric label="Total students" value={String(students.length)} detail="All registered records" icon={<Users size={16} />} /><Metric label="Active students" value={String(activeStudents)} detail="Currently active" icon={<CheckCircle2 size={16} />} /><Metric label="Branches" value={String(branches.length)} detail="Available locations" icon={<Building2 size={16} />} /></div>
@@ -218,13 +264,15 @@ export default function Home() {
             </div>
           </section>}
 
-          {!["Overview", "Branches", "Students"].includes(activeNav) && <div className="rounded-xl border border-dashed border-slate-300 bg-white px-6 py-16 text-center"><div className="mx-auto flex h-12 w-12 items-center justify-center rounded-xl bg-[#edf3f8] text-[#315d84]"><Sparkles size={20} /></div><h2 className="mt-4 text-[17px] font-bold text-slate-900">{activeNav} module is next</h2><p className="mx-auto mt-2 max-w-md text-xs leading-5 text-slate-500">This item is visible in the demo navigation, but its workflow has not been built yet. Branch and student management are available now.</p><button onClick={() => navTo("Overview")} className="mt-5 rounded-lg bg-[#244d73] px-4 py-2.5 text-[10px] font-semibold text-white">Back to overview</button></div>}
+          {!["Overview", "Branches", "Students", "Admissions"].includes(activeNav) && <div className="rounded-xl border border-dashed border-slate-300 bg-white px-6 py-16 text-center"><div className="mx-auto flex h-12 w-12 items-center justify-center rounded-xl bg-[#edf3f8] text-[#315d84]"><Sparkles size={20} /></div><h2 className="mt-4 text-[17px] font-bold text-slate-900">{activeNav} module is next</h2><p className="mx-auto mt-2 max-w-md text-xs leading-5 text-slate-500">This item is visible in the demo navigation, but its workflow has not been built yet. Branch and student management are available now.</p><button onClick={() => navTo("Overview")} className="mt-5 rounded-lg bg-[#244d73] px-4 py-2.5 text-[10px] font-semibold text-white">Back to overview</button></div>}
 
           <footer className="mt-8 flex flex-col justify-between gap-2 border-t border-slate-200 pt-5 text-[9px] text-slate-400 sm:flex-row"><p>© 2026 StudyDesk · Library Management Demo</p><p>Demo data only · Stored locally in this browser</p></footer>
         </main>
       </div>
 
       {showBranchForm && <Modal title={editingBranch ? "Edit branch" : "Add new branch"} onClose={() => setShowBranchForm(false)}><form onSubmit={saveBranch} className="space-y-4"><div><label className={labelClass}>Branch name *</label><input required value={branchForm.name} onChange={(event) => setBranchForm({ ...branchForm, name: event.target.value })} placeholder="e.g. Main Market" className={inputClass} /></div><div><label className={labelClass}>Location / address *</label><input required value={branchForm.location} onChange={(event) => setBranchForm({ ...branchForm, location: event.target.value })} placeholder="City, state" className={inputClass} /></div><div><label className={labelClass}>Total seat capacity *</label><input required min="1" type="number" value={branchForm.capacity} onChange={(event) => setBranchForm({ ...branchForm, capacity: event.target.value })} className={inputClass} /></div><div className="flex justify-end gap-2 border-t border-slate-100 pt-4"><button type="button" onClick={() => setShowBranchForm(false)} className="rounded-lg border border-slate-200 px-4 py-2.5 text-[10px] font-semibold text-slate-600">Cancel</button><button type="submit" className="rounded-lg bg-[#244d73] px-4 py-2.5 text-[10px] font-semibold text-white">{editingBranch ? "Save changes" : "Create branch"}</button></div></form></Modal>}
+
+      {showAdmissionForm && <Modal title="New admission application" onClose={() => setShowAdmissionForm(false)}><form onSubmit={saveAdmission} className="space-y-3"><div><label className={labelClass}>Applicant full name *</label><input required value={admissionForm.name} onChange={(event) => setAdmissionForm({ ...admissionForm, name: event.target.value })} placeholder="Enter full name" className={inputClass} /></div><div><label className={labelClass}>Mobile number *</label><input required inputMode="numeric" pattern="[0-9]{10}" maxLength={10} value={admissionForm.phone} onChange={(event) => setAdmissionForm({ ...admissionForm, phone: event.target.value.replace(/[^0-9]/g, "") })} placeholder="10-digit mobile number" className={inputClass} /></div><div><label className={labelClass}>Branch *</label><select required value={admissionForm.branchId} onChange={(event) => setAdmissionForm({ ...admissionForm, branchId: event.target.value })} className={inputClass}>{activeBranches.map((b) => <option key={b.id} value={b.id}>{b.name}</option>)}</select></div><div className="grid grid-cols-2 gap-3"><div><label className={labelClass}>Membership plan</label><select value={admissionForm.plan} onChange={(event) => setAdmissionForm({ ...admissionForm, plan: event.target.value })} className={inputClass}><option>Monthly</option><option>Quarterly</option><option>Half-yearly</option><option>Yearly</option><option>Daily</option></select></div><div><label className={labelClass}>Admission date</label><input type="date" required value={admissionForm.admissionDate} onChange={(event) => setAdmissionForm({ ...admissionForm, admissionDate: event.target.value })} className={inputClass} /></div></div><div><label className={labelClass}>Applicant photo (optional)</label><input type="file" accept="image/png,image/jpeg,image/webp" className={inputClass} onChange={(event) => { const file = event.target.files?.[0]; if (!file) return; if (file.size > 700 * 1024) { setNotice("Photo must be 700 KB or smaller for this browser demo."); event.target.value = ""; return; } const reader = new FileReader(); reader.onload = () => setAdmissionForm((current) => ({ ...current, photo: String(reader.result || "") })); reader.readAsDataURL(file); }} /><p className="mt-1 text-[9px] text-slate-400">JPG, PNG or WebP · Max 700 KB · Stored in this browser only</p>{admissionForm.photo && <img src={admissionForm.photo} alt="Applicant preview" className="mt-2 h-16 w-16 rounded-lg object-cover" />}</div><p className="rounded-lg bg-amber-50 px-3 py-2 text-[10px] leading-4 text-amber-800">Demo only. Use fictional details and sample images. Do not upload real student documents or personal data.</p><div className="flex justify-end gap-2 border-t border-slate-100 pt-4"><button type="button" onClick={() => setShowAdmissionForm(false)} className="rounded-lg border border-slate-200 px-4 py-2.5 text-[10px] font-semibold text-slate-600">Cancel</button><button type="submit" className="rounded-lg bg-[#244d73] px-4 py-2.5 text-[10px] font-semibold text-white">Submit application</button></div></form></Modal>}
 
       {showStudentForm && <Modal title={editingStudent ? "Edit student profile" : "New student admission"} onClose={() => setShowStudentForm(false)}><form onSubmit={saveStudent} className="space-y-3"><div><label className={labelClass}>Student full name *</label><input required value={studentForm.name} onChange={(event) => setStudentForm({ ...studentForm, name: event.target.value })} placeholder="Enter full name" className={inputClass} /></div><div><label className={labelClass}>Mobile number *</label><input required inputMode="numeric" pattern="[0-9]{10}" maxLength={10} value={studentForm.phone} onChange={(event) => setStudentForm({ ...studentForm, phone: event.target.value.replace(/[^0-9]/g, "") })} placeholder="10-digit mobile number" className={inputClass} /></div><div><label className={labelClass}>Branch *</label><select required value={studentForm.branchId} onChange={(event) => setStudentForm({ ...studentForm, branchId: event.target.value })} className={inputClass}>{activeBranches.map((branch) => <option key={branch.id} value={branch.id}>{branch.name}</option>)}</select></div><div className="grid grid-cols-2 gap-3"><div><label className={labelClass}>Membership plan</label><select value={studentForm.plan} onChange={(event) => setStudentForm({ ...studentForm, plan: event.target.value })} className={inputClass}><option>Monthly</option><option>Quarterly</option><option>Half-yearly</option><option>Yearly</option><option>Daily</option></select></div><div><label className={labelClass}>Admission date</label><input type="date" value={studentForm.admissionDate} onChange={(event) => setStudentForm({ ...studentForm, admissionDate: event.target.value })} className={inputClass} /></div></div><div><label className={labelClass}>Status</label><select value={studentForm.status} onChange={(event) => setStudentForm({ ...studentForm, status: event.target.value as "Active" | "Inactive" })} className={inputClass}><option>Active</option><option>Inactive</option></select></div><p className="rounded-lg bg-amber-50 px-3 py-2 text-[10px] leading-4 text-amber-800">Demo note: student ID is generated automatically. Do not enter real student personal information in this demo.</p><div className="flex justify-end gap-2 border-t border-slate-100 pt-4"><button type="button" onClick={() => setShowStudentForm(false)} className="rounded-lg border border-slate-200 px-4 py-2.5 text-[10px] font-semibold text-slate-600">Cancel</button><button type="submit" className="rounded-lg bg-[#244d73] px-4 py-2.5 text-[10px] font-semibold text-white">{editingStudent ? "Save profile" : "Complete admission"}</button></div></form></Modal>}
     </div>
