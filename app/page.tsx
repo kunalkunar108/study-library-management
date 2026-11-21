@@ -11,6 +11,7 @@ import {
 
 type Branch = { id: string; name: string; location: string; capacity: number; active: boolean };
 type Admission = { id: string; name: string; phone: string; branchId: string; plan: string; admissionDate: string; photo: string; status: "Pending" | "Approved" | "Rejected" };
+type Seat = { id: string; branchId: string; number: string; mode: "Fixed" | "Shift-based"; active: boolean; allocations: { studentId: string; shift: string }[] };
 type Student = {
   id: string; name: string; phone: string; branchId: string; plan: string;
   admissionDate: string; status: "Active" | "Inactive";
@@ -44,6 +45,12 @@ export default function Home() {
   const [branches, setBranches] = useState<Branch[]>(seedBranches);
   const [students, setStudents] = useState<Student[]>(seedStudents);
   const [admissions, setAdmissions] = useState<Admission[]>([]);
+  const [seats, setSeats] = useState<Seat[]>([]);
+  const [seatSearch, setSeatSearch] = useState("");
+  const [seatBranch, setSeatBranch] = useState("all");
+  const [seatNumber, setSeatNumber] = useState("");
+  const [seatMode, setSeatMode] = useState<"Fixed" | "Shift-based">("Fixed");
+  const [seatFormBranch, setSeatFormBranch] = useState(seedBranches[0].id);
   const [loaded, setLoaded] = useState(false);
   const [selectedBranch, setSelectedBranch] = useState("all");
   const [mobileNavOpen, setMobileNavOpen] = useState(false);
@@ -69,6 +76,7 @@ export default function Home() {
         if (Array.isArray(parsed.branches)) setBranches(parsed.branches);
         if (Array.isArray(parsed.students)) setStudents(parsed.students);
         if (Array.isArray(parsed.admissions)) setAdmissions(parsed.admissions);
+        if (Array.isArray(parsed.seats)) setSeats(parsed.seats);
       }
     } catch {
       setNotice("Saved demo data could not be read. Sample data is loaded.");
@@ -77,8 +85,8 @@ export default function Home() {
   }, []);
 
   useEffect(() => {
-    if (loaded) localStorage.setItem("studydesk-demo-v1", JSON.stringify({ branches, students, admissions }));
-  }, [branches, students, admissions, loaded]);
+    if (loaded) localStorage.setItem("studydesk-demo-v1", JSON.stringify({ branches, students, admissions, seats }));
+  }, [branches, students, admissions, seats, loaded]);
 
   const branchName = (id: string) => branches.find((branch) => branch.id === id)?.name || "Branch unavailable";
   const activeBranches = branches.filter((branch) => branch.active);
@@ -194,6 +202,32 @@ export default function Home() {
     setNotice("Admission " + admission.id + " marked Rejected.");
   }
 
+  function addSeat(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    const number = seatNumber.trim();
+    if (!number || !branches.some((b) => b.id === seatFormBranch)) return;
+    if (seats.some((s) => s.branchId === seatFormBranch && s.number.toLowerCase() === number.toLowerCase())) { setNotice("That seat number already exists in this branch."); return; }
+    setSeats((current) => [...current, { id: "SEAT-" + Date.now(), branchId: seatFormBranch, number, mode: seatMode, active: true, allocations: [] }]);
+    setSeatNumber(""); setNotice("Seat " + number + " added.");
+  }
+
+  function assignSeat(seat: Seat, studentId: string, shift: string) {
+    if (!studentId) { setSeats((current) => current.map((s) => s.id === seat.id ? { ...s, allocations: s.allocations.filter((a) => a.shift !== shift) } : s)); setNotice("Seat allocation released."); return; }
+    const student = students.find((s) => s.id === studentId);
+    if (!student || student.status !== "Active" || student.branchId !== seat.branchId) { setNotice("Choose an active student from this branch."); return; }
+    const occupiedElsewhere = seats.some((s) => s.id !== seat.id && s.branchId === seat.branchId && s.allocations.some((a) => a.studentId === studentId && a.shift === shift));
+    if (occupiedElsewhere) { setNotice("This student already has a seat for this shift."); return; }
+    const conflicting = seat.allocations.some((a) => a.shift === shift && a.studentId !== studentId);
+    if (conflicting) { setNotice("That seat and shift are already assigned."); return; }
+    setSeats((current) => current.map((s) => s.id === seat.id ? { ...s, allocations: [...s.allocations.filter((a) => a.shift !== shift), { studentId, shift }] } : s));
+    setNotice("Seat " + seat.number + " assigned to " + student.name + ".");
+  }
+
+  function deleteSeat(seat: Seat) {
+    if (seat.allocations.length) { setNotice("Release all seat allocations before deleting this seat."); return; }
+    setSeats((current) => current.filter((s) => s.id !== seat.id)); setNotice("Seat removed.");
+  }
+
   function deleteStudent(student: Student) {
     if (!window.confirm("Delete student " + student.name + "?")) return;
     setStudents((current) => current.filter((item) => item.id !== student.id));
@@ -224,7 +258,7 @@ export default function Home() {
           <p className="mt-1.5 px-1 text-[10px] text-slate-400">Switch branch to filter student records.</p>
         </div>
         <nav className="flex-1 overflow-y-auto px-4 pb-5 pt-2">
-          {navGroups.map((group) => <div key={group.label} className="mb-6"><p className="mb-2 px-3 text-[9px] font-bold tracking-[0.16em] text-slate-400">{group.label}</p><div className="space-y-1">{group.items.map((item) => { const Icon = item.icon; const active = activeNav === item.label; return <button key={item.label} onClick={() => navTo(item.label)} className={"group flex w-full items-center gap-3 rounded-lg px-3 py-2.5 text-left text-[12px] font-medium transition " + (active ? "bg-[#edf3f8] text-[#244d73]" : "text-slate-500 hover:bg-slate-50 hover:text-slate-800")}><Icon size={17} /><span className="flex-1">{item.label}</span>{!["Overview", "Branches", "Students", "Admissions"].includes(item.label) && <span className="text-[9px] text-slate-300">Soon</span>}</button>; })}</div></div>)}
+          {navGroups.map((group) => <div key={group.label} className="mb-6"><p className="mb-2 px-3 text-[9px] font-bold tracking-[0.16em] text-slate-400">{group.label}</p><div className="space-y-1">{group.items.map((item) => { const Icon = item.icon; const active = activeNav === item.label; return <button key={item.label} onClick={() => navTo(item.label)} className={"group flex w-full items-center gap-3 rounded-lg px-3 py-2.5 text-left text-[12px] font-medium transition " + (active ? "bg-[#edf3f8] text-[#244d73]" : "text-slate-500 hover:bg-slate-50 hover:text-slate-800")}><Icon size={17} /><span className="flex-1">{item.label}</span>{!["Overview", "Branches", "Students", "Admissions", "Seat management"].includes(item.label) && <span className="text-[9px] text-slate-300">Soon</span>}</button>; })}</div></div>)}
         </nav>
         <div className="border-t border-slate-100 p-4"><div className="mb-3 rounded-xl bg-[#f5f8fb] p-3"><div className="mb-2 flex items-center gap-2 text-[#315d84]"><Sparkles size={14} /><span className="text-[10px] font-bold">DEMO WORKSPACE</span></div><p className="text-[10px] leading-4 text-slate-500">Sample data only. Changes are saved in this browser.</p></div><div className="flex items-center gap-2 px-2 text-[10px] text-slate-400"><ShieldCheck size={13} /> Local demo mode</div></div>
       </aside>
@@ -256,6 +290,15 @@ export default function Home() {
             </div>
           </section>}
 
+          {activeNav === "Seat management" && <section>
+            <div className="mb-7 flex flex-col justify-between gap-4 sm:flex-row sm:items-end"><div><p className="mb-1 text-[11px] font-medium text-slate-400">LIBRARY OPERATIONS</p><h2 className="text-[25px] font-bold tracking-tight text-slate-900">Seat management</h2><p className="mt-1.5 text-xs text-slate-500">Create seats and allocate them to active students, by fixed seat or shift.</p></div></div>
+            <div className="mb-5 grid grid-cols-1 gap-3 sm:grid-cols-3"><Metric label="Total seats" value={String(seats.filter((s) => s.active).length)} detail="Across all branches" icon={<Armchair size={16} />} /><Metric label="Occupied allocations" value={String(seats.reduce((n,s) => n + s.allocations.length,0))} detail="Assigned seat shifts" icon={<Users size={16} />} /><Metric label="Available seats" value={String(seats.filter((s) => s.active && !s.allocations.length).length)} detail="No active allocation" icon={<CheckCircle2 size={16} />} /></div>
+            <div className="mb-5 rounded-xl border border-slate-200 bg-white p-5"><h3 className="text-[13px] font-bold text-slate-900">Add seats</h3><form onSubmit={addSeat} className="mt-4 grid grid-cols-1 gap-3 sm:grid-cols-4 sm:items-end"><div><label className={labelClass}>Branch</label><select value={seatFormBranch} onChange={(e) => setSeatFormBranch(e.target.value)} className={inputClass}>{branches.map((b) => <option key={b.id} value={b.id}>{b.name}</option>)}</select></div><div><label className={labelClass}>Seat number / label</label><input required value={seatNumber} onChange={(e) => setSeatNumber(e.target.value)} placeholder="e.g. A-01" className={inputClass} /></div><div><label className={labelClass}>Allocation type</label><select value={seatMode} onChange={(e) => setSeatMode(e.target.value as "Fixed" | "Shift-based")} className={inputClass}><option>Fixed</option><option>Shift-based</option></select></div><button type="submit" className="rounded-lg bg-[#244d73] px-4 py-2.5 text-[11px] font-semibold text-white"><Plus size={14} className="mr-1 inline" />Add seat</button></form><p className="mt-3 text-[10px] text-slate-400">Fixed seats have one full-day allocation. Shift-based seats can have separate morning, evening and night students.</p></div>
+            <div className="rounded-xl border border-slate-200 bg-white"><div className="flex flex-col gap-3 border-b border-slate-100 px-5 py-4 sm:flex-row sm:items-center sm:justify-between"><div><h3 className="text-[13px] font-bold text-slate-900">Seat directory</h3><p className="mt-1 text-[10px] text-slate-400">{seats.length} configured seats</p></div><div className="grid grid-cols-1 gap-2 sm:grid-cols-2"><input value={seatSearch} onChange={(e) => setSeatSearch(e.target.value)} placeholder="Search seat..." className={inputClass} /><select value={seatBranch} onChange={(e) => setSeatBranch(e.target.value)} className={inputClass}><option value="all">All branches</option>{branches.map((b) => <option key={b.id} value={b.id}>{b.name}</option>)}</select></div></div>
+              <div className="grid grid-cols-1 gap-3 p-4 md:grid-cols-2 xl:grid-cols-3">{seats.filter((s) => (seatBranch === "all" || s.branchId === seatBranch) && (s.number + " " + branchName(s.branchId)).toLowerCase().includes(seatSearch.toLowerCase())).map((seat) => { const shifts = seat.mode === "Fixed" ? ["Full day"] : ["Morning", "Evening", "Night"]; return <div key={seat.id} className="rounded-xl border border-slate-200 p-4"><div className="flex items-start justify-between"><div><p className="text-[15px] font-bold text-slate-900">{seat.number}</p><p className="mt-1 text-[10px] text-slate-400">{branchName(seat.branchId)} · {seat.mode}</p></div><span className={"rounded-full px-2 py-1 text-[9px] font-semibold " + (seat.allocations.length ? "bg-amber-50 text-amber-700" : "bg-emerald-50 text-emerald-700")}>{seat.allocations.length ? "Allocated" : "Available"}</span></div><div className="mt-4 space-y-3">{shifts.map((shift) => { const allocation = seat.allocations.find((a) => a.shift === shift); return <div key={shift}><label className={labelClass}>{shift}</label><select value={allocation?.studentId || ""} onChange={(e) => assignSeat(seat,e.target.value,shift)} className={inputClass}><option value="">Available — assign student</option>{students.filter((s) => s.status === "Active" && s.branchId === seat.branchId).map((s) => <option key={s.id} value={s.id}>{s.name} ({s.id})</option>)}</select></div>; })}</div><div className="mt-3 flex items-center justify-between border-t border-slate-100 pt-3"><span className="text-[9px] text-slate-400">{seat.allocations.length} allocation(s)</span><button onClick={() => deleteSeat(seat)} className="rounded-md border border-rose-100 px-2.5 py-1.5 text-[9px] font-semibold text-rose-600 hover:bg-rose-50">Remove seat</button></div></div>; })}{seats.length === 0 && <div className="col-span-full px-6 py-12 text-center"><p className="text-[12px] font-semibold text-slate-700">No seats configured</p><p className="mt-1 text-[10px] text-slate-400">Add your first seat above to start allocating students.</p></div>}</div>
+            </div>
+          </section>}
+
           {activeNav === "Students" && <section>
             <div className="mb-7 flex flex-col justify-between gap-4 sm:flex-row sm:items-end"><div><p className="mb-1 text-[11px] font-medium text-slate-400">STUDENT DIRECTORY</p><h2 className="text-[25px] font-bold tracking-tight text-slate-900">Students</h2><p className="mt-1.5 text-xs text-slate-500">Manage student profiles and view records branch-wise.</p></div><button onClick={openNewStudent} disabled={activeBranches.length === 0} className="inline-flex items-center justify-center gap-2 rounded-lg bg-[#244d73] px-4 py-2.5 text-[11px] font-semibold text-white hover:bg-[#193c5e] disabled:cursor-not-allowed disabled:opacity-50"><Plus size={15} /> Add student</button></div>
             <div className="mb-5 grid grid-cols-1 gap-3 sm:grid-cols-3"><Metric label="Total students" value={String(students.length)} detail="All registered records" icon={<Users size={16} />} /><Metric label="Active students" value={String(activeStudents)} detail="Currently active" icon={<CheckCircle2 size={16} />} /><Metric label="Branches" value={String(branches.length)} detail="Available locations" icon={<Building2 size={16} />} /></div>
@@ -264,7 +307,7 @@ export default function Home() {
             </div>
           </section>}
 
-          {!["Overview", "Branches", "Students", "Admissions"].includes(activeNav) && <div className="rounded-xl border border-dashed border-slate-300 bg-white px-6 py-16 text-center"><div className="mx-auto flex h-12 w-12 items-center justify-center rounded-xl bg-[#edf3f8] text-[#315d84]"><Sparkles size={20} /></div><h2 className="mt-4 text-[17px] font-bold text-slate-900">{activeNav} module is next</h2><p className="mx-auto mt-2 max-w-md text-xs leading-5 text-slate-500">This item is visible in the demo navigation, but its workflow has not been built yet. Branch and student management are available now.</p><button onClick={() => navTo("Overview")} className="mt-5 rounded-lg bg-[#244d73] px-4 py-2.5 text-[10px] font-semibold text-white">Back to overview</button></div>}
+          {!["Overview", "Branches", "Students", "Admissions", "Seat management"].includes(activeNav) && <div className="rounded-xl border border-dashed border-slate-300 bg-white px-6 py-16 text-center"><div className="mx-auto flex h-12 w-12 items-center justify-center rounded-xl bg-[#edf3f8] text-[#315d84]"><Sparkles size={20} /></div><h2 className="mt-4 text-[17px] font-bold text-slate-900">{activeNav} module is next</h2><p className="mx-auto mt-2 max-w-md text-xs leading-5 text-slate-500">This item is visible in the demo navigation, but its workflow has not been built yet. Branch and student management are available now.</p><button onClick={() => navTo("Overview")} className="mt-5 rounded-lg bg-[#244d73] px-4 py-2.5 text-[10px] font-semibold text-white">Back to overview</button></div>}
 
           <footer className="mt-8 flex flex-col justify-between gap-2 border-t border-slate-200 pt-5 text-[9px] text-slate-400 sm:flex-row"><p>© 2026 StudyDesk · Library Management Demo</p><p>Demo data only · Stored locally in this browser</p></footer>
         </main>
