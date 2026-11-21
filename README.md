@@ -24,7 +24,7 @@ Open http://localhost:3000.
 ## Development status
 
 - [x] Project foundation
-- [ ] Corporate application shell and dashboard
+- [x] Corporate application shell and dashboard
 - [ ] Branch and student management
 - [ ] Admissions, seats and memberships
 - [ ] Attendance and fee collection
