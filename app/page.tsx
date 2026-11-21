@@ -1,12 +1,12 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
+import type { FormEvent, ReactNode } from "react";
 import {
   BookOpen, LayoutDashboard, Building2, Users, GraduationCap, Armchair,
   ShieldCheck, ClipboardCheck, Wallet, UserRound, ChartNoAxesCombined,
   Settings, Menu, X, ChevronDown, Search, Plus, Pencil, Trash2,
-  MapPin, Phone, CalendarDays, CheckCircle2, AlertCircle, Sparkles,
-  ArrowUpRight, Clock3
+  MapPin, CalendarDays, CheckCircle2, AlertCircle, Sparkles
 } from "lucide-react";
 
 type Branch = { id: string; name: string; location: string; capacity: number; active: boolean };
@@ -90,7 +90,7 @@ export default function Home() {
     setShowBranchForm(true);
   }
 
-  function saveBranch(event: React.FormEvent<HTMLFormElement>) {
+  function saveBranch(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     const name = branchForm.name.trim();
     const location = branchForm.location.trim();
@@ -231,7 +231,7 @@ export default function Home() {
   );
 }
 
-function Metric({ label, value, detail, icon }: { label: string; value: string; detail: string; icon: React.ReactNode }) {
+function Metric({ label, value, detail, icon }: { label: string; value: string; detail: string; icon: ReactNode }) {
   return <div className="rounded-xl border border-slate-200 bg-white p-4"><div className="flex items-center justify-between"><p className="text-[10px] font-medium text-slate-500">{label}</p><span className="flex h-8 w-8 items-center justify-center rounded-lg bg-[#edf3f8] text-[#315d84]">{icon}</span></div><p className="mt-3 text-[24px] font-bold tracking-tight text-slate-900">{value}</p><p className="mt-1 text-[10px] text-slate-400">{detail}</p></div>;
 }
 
