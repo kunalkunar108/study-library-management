@@ -5,7 +5,7 @@ import type { FormEvent, ReactNode } from "react";
 import {
   BookOpen, LayoutDashboard, Building2, Users, GraduationCap, Armchair,
   ShieldCheck, ClipboardCheck, Wallet, UserRound, ChartNoAxesCombined,
-  Settings, Menu, X, ChevronDown, Search, Plus, Pencil, Trash2,
+  Settings, Menu, X, ChevronDown, Search, Plus, Pencil, Trash2, Clock3,
   MapPin, CalendarDays, CheckCircle2, AlertCircle, Sparkles
 } from "lucide-react";
 
@@ -15,6 +15,8 @@ type Seat = { id: string; branchId: string; number: string; mode: "Fixed" | "Shi
 type MembershipPlan = { id: string; name: string; durationDays: number; fee: number; active: boolean };
 type Membership = { id: string; studentId: string; planId: string; branchId: string; startDate: string; endDate: string; fee: number };
 type FeePayment = { id: string; membershipId: string; studentId: string; branchId: string; date: string; amount: number; method: "Cash" | "UPI" | "Bank transfer"; reference: string; note: string };
+type AttendanceStatus = "Present" | "Absent" | "Late";
+type AttendanceRecord = { id: string; studentId: string; branchId: string; date: string; status: AttendanceStatus };
 type Student = {
   id: string; name: string; phone: string; branchId: string; plan: string;
   admissionDate: string; status: "Active" | "Inactive";
@@ -57,6 +59,11 @@ export default function Home() {
   ]);
   const [memberships, setMemberships] = useState<Membership[]>([]);
   const [payments, setPayments] = useState<FeePayment[]>([]);
+  const [attendanceRecords, setAttendanceRecords] = useState<AttendanceRecord[]>([]);
+  const [attendanceDate, setAttendanceDate] = useState(new Date().toLocaleDateString("en-CA"));
+  const [attendanceSearch, setAttendanceSearch] = useState("");
+  const [attendanceFilter, setAttendanceFilter] = useState("all");
+  const [attendanceDraft, setAttendanceDraft] = useState<Record<string, AttendanceStatus | "">>({});
   const [showPaymentForm, setShowPaymentForm] = useState(false);
   const [paymentForm, setPaymentForm] = useState({ membershipId: "", date: new Date().toISOString().slice(0, 10), amount: "", method: "Cash" as FeePayment["method"], reference: "", note: "" });
   const [feeSearch, setFeeSearch] = useState("");
@@ -101,6 +108,7 @@ export default function Home() {
         if (Array.isArray(parsed.plans)) setPlans(parsed.plans);
         if (Array.isArray(parsed.memberships)) setMemberships(parsed.memberships);
         if (Array.isArray(parsed.payments)) setPayments(parsed.payments);
+        if (Array.isArray(parsed.attendance)) setAttendanceRecords(parsed.attendance);
       }
     } catch {
       setNotice("Saved demo data could not be read. Sample data is loaded.");
@@ -109,8 +117,8 @@ export default function Home() {
   }, []);
 
   useEffect(() => {
-    if (loaded) localStorage.setItem("studydesk-demo-v1", JSON.stringify({ branches, students, admissions, seats, plans, memberships, payments }));
-  }, [branches, students, admissions, seats, plans, memberships, payments, loaded]);
+    if (loaded) localStorage.setItem("studydesk-demo-v1", JSON.stringify({ branches, students, admissions, seats, plans, memberships, payments, attendance: attendanceRecords }));
+  }, [branches, students, admissions, seats, plans, memberships, payments, attendanceRecords, loaded]);
 
   const branchName = (id: string) => branches.find((branch) => branch.id === id)?.name || "Branch unavailable";
   const activeBranches = branches.filter((branch) => branch.active);
@@ -144,6 +152,28 @@ export default function Home() {
     return matchesSearch && (membershipStatus === "all" || status === membershipStatus) && (selectedBranch === "all" || item.branchId === selectedBranch);
   });
   const today = new Intl.DateTimeFormat("en-IN", { weekday: "long", day: "numeric", month: "long", year: "numeric" }).format(new Date());
+  const attendanceStudents = students.filter((student) => student.status === "Active" && (selectedBranch === "all" || student.branchId === selectedBranch) && (!attendanceSearch.trim() || (student.name + " " + student.id + " " + student.phone).toLowerCase().includes(attendanceSearch.trim().toLowerCase())));
+  const selectedDayRecords = attendanceRecords.filter((record) => record.date === attendanceDate && (selectedBranch === "all" || record.branchId === selectedBranch));
+  const selectedDayByStudent = new Map(selectedDayRecords.map((record) => [record.studentId, record]));
+  const attendanceCounts = { Present: selectedDayRecords.filter((record) => record.status === "Present").length, Absent: selectedDayRecords.filter((record) => record.status === "Absent").length, Late: selectedDayRecords.filter((record) => record.status === "Late").length };
+  const attendanceHistory = attendanceRecords.filter((record) => (selectedBranch === "all" || record.branchId === selectedBranch) && (!attendanceSearch.trim() || ((students.find((student) => student.id === record.studentId)?.name || "").toLowerCase().includes(attendanceSearch.trim().toLowerCase()) || record.studentId.toLowerCase().includes(attendanceSearch.trim().toLowerCase()))) && (attendanceFilter === "all" || record.status === attendanceFilter)).sort((a, b) => b.date.localeCompare(a.date)).slice(0, 50);
+  const monthlyAttendance = (studentId: string) => { const rows = attendanceRecords.filter((record) => record.studentId === studentId && record.date.slice(0, 7) === attendanceDate.slice(0, 7)); return rows.length ? Math.round((rows.filter((record) => record.status !== "Absent").length / rows.length) * 100) : 0; };
+
+  function markAttendanceForAll(status: AttendanceStatus) {
+    setAttendanceDraft(Object.fromEntries(attendanceStudents.map((student) => [student.id, status])));
+  }
+
+  function saveAttendance() {
+    const updates = attendanceStudents.filter((student) => attendanceDraft[student.id] !== undefined).map((student) => ({ id: "ATT-" + student.id + "-" + attendanceDate, studentId: student.id, branchId: student.branchId, date: attendanceDate, status: attendanceDraft[student.id] as AttendanceStatus }));
+    if (!updates.length) { setNotice("Choose attendance statuses before saving."); return; }
+    setAttendanceRecords((current) => {
+      const updatedIds = new Set(updates.map((record) => record.studentId));
+      const retained = current.filter((record) => !(record.date === attendanceDate && updatedIds.has(record.studentId)));
+      return [...updates, ...retained];
+    });
+    setAttendanceDraft({});
+    setNotice("Attendance saved for " + updates.length + " student(s) on " + attendanceDate + ". Existing entries for the same student and date were updated, not duplicated.");
+  }
 
   function openNewBranch() {
     setEditingBranch(null);
@@ -370,7 +400,7 @@ export default function Home() {
           <p className="mt-1.5 px-1 text-[10px] text-slate-400">Switch branch to filter student records.</p>
         </div>
         <nav className="flex-1 overflow-y-auto px-4 pb-5 pt-2">
-          {navGroups.map((group) => <div key={group.label} className="mb-6"><p className="mb-2 px-3 text-[9px] font-bold tracking-[0.16em] text-slate-400">{group.label}</p><div className="space-y-1">{group.items.map((item) => { const Icon = item.icon; const active = activeNav === item.label; return <button key={item.label} onClick={() => navTo(item.label)} className={"group flex w-full items-center gap-3 rounded-lg px-3 py-2.5 text-left text-[12px] font-medium transition " + (active ? "bg-[#edf3f8] text-[#244d73]" : "text-slate-500 hover:bg-slate-50 hover:text-slate-800")}><Icon size={17} /><span className="flex-1">{item.label}</span>{!["Overview", "Branches", "Students", "Admissions", "Seat management", "Memberships", "Fee collection"].includes(item.label) && <span className="text-[9px] text-slate-300">Soon</span>}</button>; })}</div></div>)}
+          {navGroups.map((group) => <div key={group.label} className="mb-6"><p className="mb-2 px-3 text-[9px] font-bold tracking-[0.16em] text-slate-400">{group.label}</p><div className="space-y-1">{group.items.map((item) => { const Icon = item.icon; const active = activeNav === item.label; return <button key={item.label} onClick={() => navTo(item.label)} className={"group flex w-full items-center gap-3 rounded-lg px-3 py-2.5 text-left text-[12px] font-medium transition " + (active ? "bg-[#edf3f8] text-[#244d73]" : "text-slate-500 hover:bg-slate-50 hover:text-slate-800")}><Icon size={17} /><span className="flex-1">{item.label}</span>{!["Overview", "Branches", "Students", "Admissions", "Seat management", "Memberships", "Attendance", "Fee collection"].includes(item.label) && <span className="text-[9px] text-slate-300">Soon</span>}</button>; })}</div></div>)}
         </nav>
         <div className="border-t border-slate-100 p-4"><div className="mb-3 rounded-xl bg-[#f5f8fb] p-3"><div className="mb-2 flex items-center gap-2 text-[#315d84]"><Sparkles size={14} /><span className="text-[10px] font-bold">DEMO WORKSPACE</span></div><p className="text-[10px] leading-4 text-slate-500">Sample data only. Changes are saved in this browser.</p></div><div className="flex items-center gap-2 px-2 text-[10px] text-slate-400"><ShieldCheck size={13} /> Local demo mode</div></div>
       </aside>
@@ -419,6 +449,17 @@ export default function Home() {
             </div>
           </section>}
 
+          {activeNav === "Attendance" && <section>
+            <div className="mb-7 flex flex-col justify-between gap-4 sm:flex-row sm:items-end"><div><p className="mb-1 text-[11px] font-medium text-slate-400">DAILY LIBRARY OPERATIONS</p><h2 className="text-[25px] font-bold tracking-tight text-slate-900">Attendance management</h2><p className="mt-1.5 text-xs text-slate-500">Mark daily attendance, review student history and monitor monthly attendance rates.</p></div><div className="flex flex-wrap gap-2"><button onClick={() => markAttendanceForAll("Present")} className="rounded-lg border border-slate-200 bg-white px-3 py-2.5 text-[10px] font-semibold text-emerald-700">Mark all present</button><button onClick={() => markAttendanceForAll("Absent")} className="rounded-lg border border-slate-200 bg-white px-3 py-2.5 text-[10px] font-semibold text-rose-600">Mark all absent</button></div></div>
+            <div className="mb-5 grid grid-cols-1 gap-3 sm:grid-cols-2 xl:grid-cols-4"><Metric label="Present today" value={String(attendanceCounts.Present)} detail={"For " + attendanceDate} icon={<CheckCircle2 size={16} />} /><Metric label="Absent today" value={String(attendanceCounts.Absent)} detail="Recorded absences" icon={<AlertCircle size={16} />} /><Metric label="Late today" value={String(attendanceCounts.Late)} detail="Recorded late arrivals" icon={<Clock3 size={16} />} /><Metric label="Marked today" value={String(selectedDayRecords.length)} detail={"Of " + attendanceStudents.length + " visible active students"} icon={<ClipboardCheck size={16} />} /></div>
+            <div className="mb-5 rounded-xl border border-slate-200 bg-white"><div className="flex flex-col gap-3 border-b border-slate-100 px-5 py-4 sm:px-6"><div className="flex flex-wrap items-center justify-between gap-3"><div><h3 className="text-[13px] font-bold text-slate-900">Daily attendance register</h3><p className="mt-1 text-[10px] text-slate-400">Choose a date, set each student status and save. Saving again updates the existing date entry.</p></div><input aria-label="Attendance date" type="date" value={attendanceDate} onChange={(event) => { setAttendanceDate(event.target.value); setAttendanceDraft({}); }} className="h-9 rounded-lg border border-slate-200 bg-white px-3 text-[10px] text-slate-600" /></div><div className="relative"><Search size={13} className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" /><input value={attendanceSearch} onChange={(event) => setAttendanceSearch(event.target.value)} placeholder="Search student name, ID or phone..." className="h-9 w-full rounded-lg border border-slate-200 pl-8 pr-3 text-[10px] outline-none focus:border-[#7894ad]" /></div></div>
+              <div className="overflow-x-auto"><table className="w-full min-w-[700px] text-left"><thead><tr className="bg-slate-50/80 text-[9px] font-semibold uppercase tracking-wider text-slate-400"><th className="px-5 py-3 sm:px-6">Student</th><th className="px-4 py-3">Branch</th><th className="px-4 py-3">Saved status</th><th className="px-4 py-3">Set status</th><th className="px-4 py-3">Monthly attendance</th></tr></thead><tbody>{attendanceStudents.map((student) => { const saved = selectedDayByStudent.get(student.id); const chosen = attendanceDraft[student.id] !== undefined ? attendanceDraft[student.id] : (saved?.status || ""); return <tr key={student.id} className="border-t border-slate-100 hover:bg-slate-50/60"><td className="px-5 py-3 sm:px-6"><p className="text-[10px] font-semibold text-slate-800">{student.name}</p><p className="mt-0.5 text-[9px] text-slate-400">{student.id}</p></td><td className="px-4 py-3 text-[10px] text-slate-500">{branchName(student.branchId)}</td><td className="px-4 py-3 text-[10px] text-slate-500">{saved?.status || "Not marked"}</td><td className="px-4 py-3"><select aria-label={"Attendance status for " + student.name} value={chosen} onChange={(event) => setAttendanceDraft((current) => ({ ...current, [student.id]: event.target.value as AttendanceStatus | "" }))} className="h-8 rounded-md border border-slate-200 bg-white px-2 text-[10px] text-slate-700"><option value="">Not marked</option><option value="Present">Present</option><option value="Absent">Absent</option><option value="Late">Late</option></select></td><td className="px-4 py-3 text-[10px] font-semibold text-slate-600">{monthlyAttendance(student.id)}%</td></tr>; })}{attendanceStudents.length === 0 && <tr><td colSpan={5} className="px-6 py-12 text-center text-[11px] text-slate-400">No active students match this branch and search.</td></tr>}</tbody></table></div>
+              <div className="flex flex-col justify-between gap-3 border-t border-slate-100 px-5 py-4 sm:flex-row sm:items-center sm:px-6"><p className="text-[10px] text-slate-400">Blank statuses are left unchanged. Duplicate student/date entries are prevented.</p><button onClick={saveAttendance} disabled={!attendanceStudents.some((student) => attendanceDraft[student.id] !== undefined && attendanceDraft[student.id] !== "")} className="rounded-lg bg-[#244d73] px-4 py-2.5 text-[10px] font-semibold text-white disabled:opacity-40">Save attendance</button></div>
+            </div>
+            <div className="rounded-xl border border-slate-200 bg-white"><div className="flex flex-col gap-3 border-b border-slate-100 px-5 py-4 sm:flex-row sm:items-center sm:justify-between sm:px-6"><div><h3 className="text-[13px] font-bold text-slate-900">Attendance history</h3><p className="mt-1 text-[10px] text-slate-400">Latest 50 records for the selected branch and search.</p></div><select value={attendanceFilter} onChange={(event) => setAttendanceFilter(event.target.value)} className="h-9 rounded-lg border border-slate-200 bg-white px-3 text-[10px] text-slate-600"><option value="all">All statuses</option><option>Present</option><option>Absent</option><option>Late</option></select></div><div className="overflow-x-auto"><table className="w-full min-w-[620px] text-left"><thead><tr className="bg-slate-50/80 text-[9px] font-semibold uppercase tracking-wider text-slate-400"><th className="px-5 py-3 sm:px-6">Date</th><th className="px-4 py-3">Student</th><th className="px-4 py-3">Branch</th><th className="px-4 py-3">Status</th></tr></thead><tbody>{attendanceHistory.map((record) => { const student = students.find((item) => item.id === record.studentId); return <tr key={record.id} className="border-t border-slate-100"><td className="px-5 py-3 text-[10px] text-slate-500 sm:px-6">{record.date}</td><td className="px-4 py-3 text-[10px] font-semibold text-slate-700">{student?.name || record.studentId}<span className="ml-1 text-[9px] font-normal text-slate-400">{record.studentId}</span></td><td className="px-4 py-3 text-[10px] text-slate-500">{branchName(record.branchId)}</td><td className="px-4 py-3"><span className={"rounded-full px-2 py-1 text-[9px] font-semibold " + (record.status === "Present" ? "bg-emerald-50 text-emerald-700" : record.status === "Late" ? "bg-amber-50 text-amber-700" : "bg-rose-50 text-rose-600")}>{record.status}</span></td></tr>; })}{attendanceHistory.length === 0 && <tr><td colSpan={4} className="px-6 py-10 text-center text-[11px] text-slate-400">No attendance history found.</td></tr>}</tbody></table></div></div>
+            <p className="mt-3 rounded-lg bg-amber-50 px-4 py-3 text-[10px] leading-4 text-amber-800">Demo only: attendance is manually recorded and stored in this browser. No QR, biometric device or real-time check-in is connected. Use fictional student records.</p>
+          </section>}
+
           {activeNav === "Fee collection" && <section>
             <div className="mb-7"><p className="mb-1 text-[11px] font-medium text-slate-400">PAYMENT OPERATIONS</p><h2 className="text-[25px] font-bold tracking-tight text-slate-900">Fee collection</h2><p className="mt-1.5 text-xs text-slate-500">Record cash, UPI and bank-transfer payments against student memberships.</p></div>
             <div className="mb-5 grid grid-cols-1 gap-3 sm:grid-cols-2 xl:grid-cols-4"><Metric label="Collected this month" value={"₹" + monthlyCollection.toLocaleString("en-IN")} detail="Based on payment date" icon={<Wallet size={16} />} /><Metric label="Total collected" value={"₹" + payments.reduce((sum,p)=>sum+p.amount,0).toLocaleString("en-IN")} detail="All recorded payments" icon={<CheckCircle2 size={16} />} /><Metric label="Outstanding dues" value={"₹" + totalOutstanding.toLocaleString("en-IN")} detail="Across all memberships" icon={<AlertCircle size={16} />} /><Metric label="Payment entries" value={String(payments.length)} detail="Recorded transactions" icon={<ClipboardCheck size={16} />} /></div>
@@ -438,7 +479,7 @@ export default function Home() {
             </div><p className="mt-3 rounded-lg bg-amber-50 px-4 py-3 text-[10px] leading-4 text-amber-800">Demo only: plan fees and membership dates are sample records. Renewal is recorded here; fee collection and payment tracking will be a separate module. Data stays in this browser.</p>
           </section>}
 
-          {!["Overview", "Branches", "Students", "Admissions", "Seat management", "Memberships", "Fee collection"].includes(activeNav) && <div className="rounded-xl border border-dashed border-slate-300 bg-white px-6 py-16 text-center"><div className="mx-auto flex h-12 w-12 items-center justify-center rounded-xl bg-[#edf3f8] text-[#315d84]"><Sparkles size={20} /></div><h2 className="mt-4 text-[17px] font-bold text-slate-900">{activeNav} module is next</h2><p className="mx-auto mt-2 max-w-md text-xs leading-5 text-slate-500">This item is visible in the demo navigation, but its workflow has not been built yet. Branch and student management are available now.</p><button onClick={() => navTo("Overview")} className="mt-5 rounded-lg bg-[#244d73] px-4 py-2.5 text-[10px] font-semibold text-white">Back to overview</button></div>}
+          {!["Overview", "Branches", "Students", "Admissions", "Seat management", "Memberships", "Attendance", "Fee collection"].includes(activeNav) && <div className="rounded-xl border border-dashed border-slate-300 bg-white px-6 py-16 text-center"><div className="mx-auto flex h-12 w-12 items-center justify-center rounded-xl bg-[#edf3f8] text-[#315d84]"><Sparkles size={20} /></div><h2 className="mt-4 text-[17px] font-bold text-slate-900">{activeNav} module is next</h2><p className="mx-auto mt-2 max-w-md text-xs leading-5 text-slate-500">This item is visible in the demo navigation, but its workflow has not been built yet. Branch and student management are available now.</p><button onClick={() => navTo("Overview")} className="mt-5 rounded-lg bg-[#244d73] px-4 py-2.5 text-[10px] font-semibold text-white">Back to overview</button></div>}
 
           <footer className="mt-8 flex flex-col justify-between gap-2 border-t border-slate-200 pt-5 text-[9px] text-slate-400 sm:flex-row"><p>© 2026 StudyDesk · Library Management Demo</p><p>Demo data only · Stored locally in this browser</p></footer>
         </main>
