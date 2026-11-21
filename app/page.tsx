@@ -17,6 +17,8 @@ type Membership = { id: string; studentId: string; planId: string; branchId: str
 type FeePayment = { id: string; membershipId: string; studentId: string; branchId: string; date: string; amount: number; method: "Cash" | "UPI" | "Bank transfer"; reference: string; note: string };
 type AttendanceStatus = "Present" | "Absent" | "Late";
 type AttendanceRecord = { id: string; studentId: string; branchId: string; date: string; status: AttendanceStatus };
+type StaffRole = "Manager" | "Receptionist" | "Librarian" | "Other";
+type StaffMember = { id: string; name: string; phone: string; email: string; address: string; branchId: string; role: StaffRole; status: "Active" | "Inactive" };
 type Student = {
   id: string; name: string; phone: string; branchId: string; plan: string;
   admissionDate: string; status: "Active" | "Inactive";
@@ -60,6 +62,13 @@ export default function Home() {
   const [memberships, setMemberships] = useState<Membership[]>([]);
   const [payments, setPayments] = useState<FeePayment[]>([]);
   const [attendanceRecords, setAttendanceRecords] = useState<AttendanceRecord[]>([]);
+  const [staff, setStaff] = useState<StaffMember[]>([]);
+  const [staffSearch, setStaffSearch] = useState("");
+  const [staffRoleFilter, setStaffRoleFilter] = useState("all");
+  const [staffStatusFilter, setStaffStatusFilter] = useState("all");
+  const [showStaffForm, setShowStaffForm] = useState(false);
+  const [editingStaff, setEditingStaff] = useState<string | null>(null);
+  const [staffForm, setStaffForm] = useState({ name: "", phone: "", email: "", address: "", branchId: seedBranches[0].id, role: "Librarian" as StaffRole, status: "Active" as "Active" | "Inactive" });
   const [attendanceDate, setAttendanceDate] = useState(new Date().toLocaleDateString("en-CA"));
   const [attendanceSearch, setAttendanceSearch] = useState("");
   const [attendanceFilter, setAttendanceFilter] = useState("all");
@@ -109,6 +118,7 @@ export default function Home() {
         if (Array.isArray(parsed.memberships)) setMemberships(parsed.memberships);
         if (Array.isArray(parsed.payments)) setPayments(parsed.payments);
         if (Array.isArray(parsed.attendance)) setAttendanceRecords(parsed.attendance);
+        if (Array.isArray(parsed.staff)) setStaff(parsed.staff);
       }
     } catch {
       setNotice("Saved demo data could not be read. Sample data is loaded.");
@@ -117,8 +127,8 @@ export default function Home() {
   }, []);
 
   useEffect(() => {
-    if (loaded) localStorage.setItem("studydesk-demo-v1", JSON.stringify({ branches, students, admissions, seats, plans, memberships, payments, attendance: attendanceRecords }));
-  }, [branches, students, admissions, seats, plans, memberships, payments, attendanceRecords, loaded]);
+    if (loaded) localStorage.setItem("studydesk-demo-v1", JSON.stringify({ branches, students, admissions, seats, plans, memberships, payments, attendance: attendanceRecords, staff }));
+  }, [branches, students, admissions, seats, plans, memberships, payments, attendanceRecords, staff, loaded]);
 
   const branchName = (id: string) => branches.find((branch) => branch.id === id)?.name || "Branch unavailable";
   const activeBranches = branches.filter((branch) => branch.active);
@@ -151,6 +161,8 @@ export default function Home() {
     const matchesSearch = !q || (student?.name || "").toLowerCase().includes(q) || item.studentId.toLowerCase().includes(q);
     return matchesSearch && (membershipStatus === "all" || status === membershipStatus) && (selectedBranch === "all" || item.branchId === selectedBranch);
   });
+  const visibleStaff = staff.filter((person) => (selectedBranch === "all" || person.branchId === selectedBranch) && (staffRoleFilter === "all" || person.role === staffRoleFilter) && (staffStatusFilter === "all" || person.status === staffStatusFilter) && (!staffSearch.trim() || (person.name + " " + person.id + " " + person.phone + " " + person.email).toLowerCase().includes(staffSearch.trim().toLowerCase())));
+  const activeStaffCount = staff.filter((person) => person.status === "Active").length;
   const today = new Intl.DateTimeFormat("en-IN", { weekday: "long", day: "numeric", month: "long", year: "numeric" }).format(new Date());
   const attendanceStudents = students.filter((student) => student.status === "Active" && (selectedBranch === "all" || student.branchId === selectedBranch) && (!attendanceSearch.trim() || (student.name + " " + student.id + " " + student.phone).toLowerCase().includes(attendanceSearch.trim().toLowerCase())));
   const selectedDayRecords = attendanceRecords.filter((record) => record.date === attendanceDate && (selectedBranch === "all" || record.branchId === selectedBranch));
@@ -158,6 +170,44 @@ export default function Home() {
   const attendanceCounts = { Present: selectedDayRecords.filter((record) => record.status === "Present").length, Absent: selectedDayRecords.filter((record) => record.status === "Absent").length, Late: selectedDayRecords.filter((record) => record.status === "Late").length };
   const attendanceHistory = attendanceRecords.filter((record) => (selectedBranch === "all" || record.branchId === selectedBranch) && (!attendanceSearch.trim() || ((students.find((student) => student.id === record.studentId)?.name || "").toLowerCase().includes(attendanceSearch.trim().toLowerCase()) || record.studentId.toLowerCase().includes(attendanceSearch.trim().toLowerCase()))) && (attendanceFilter === "all" || record.status === attendanceFilter)).sort((a, b) => b.date.localeCompare(a.date)).slice(0, 50);
   const monthlyAttendance = (studentId: string) => { const rows = attendanceRecords.filter((record) => record.studentId === studentId && record.date.slice(0, 7) === attendanceDate.slice(0, 7)); return rows.length ? Math.round((rows.filter((record) => record.status !== "Absent").length / rows.length) * 100) : 0; };
+
+  function openNewStaff() {
+    setEditingStaff(null);
+    setStaffForm({ name: "", phone: "", email: "", address: "", branchId: activeBranches[0]?.id || "", role: "Librarian", status: "Active" });
+    setShowStaffForm(true);
+  }
+
+  function editStaff(person: StaffMember) {
+    setEditingStaff(person.id);
+    setStaffForm({ name: person.name, phone: person.phone, email: person.email, address: person.address, branchId: person.branchId, role: person.role, status: person.status });
+    setShowStaffForm(true);
+  }
+
+  function saveStaff(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    const name = staffForm.name.trim();
+    const phone = staffForm.phone.trim();
+    const email = staffForm.email.trim();
+    if (!name || !/^[0-9]{10}$/.test(phone) || !branches.some((item) => item.id === staffForm.branchId)) return;
+    if (email && !/^[^\\s@]+@[^\\s@]+\\.[^\\s@]+$/.test(email)) { setNotice("Enter a valid email address or leave it blank."); return; }
+    if (editingStaff) {
+      setStaff((current) => current.map((person) => person.id === editingStaff ? { ...person, ...staffForm, name, phone, email, address: staffForm.address.trim() } : person));
+      setNotice("Staff profile updated.");
+    } else {
+      const nextNumber = Math.max(0, ...staff.map((person) => Number(person.id.replace("STF-", "")) || 0)) + 1;
+      const id = "STF-" + String(nextNumber).padStart(4, "0");
+      setStaff((current) => [{ id, ...staffForm, name, phone, email, address: staffForm.address.trim() }, ...current]);
+      setNotice("Staff member added. Generated ID: " + id);
+    }
+    setShowStaffForm(false);
+    setEditingStaff(null);
+  }
+
+  function deleteStaff(person: StaffMember) {
+    if (!window.confirm("Delete " + person.name + " from the staff directory?")) return;
+    setStaff((current) => current.filter((item) => item.id !== person.id));
+    setNotice("Staff record deleted.");
+  }
 
   function markAttendanceForAll(status: AttendanceStatus) {
     setAttendanceDraft(Object.fromEntries(attendanceStudents.map((student) => [student.id, status])));
@@ -400,7 +450,7 @@ export default function Home() {
           <p className="mt-1.5 px-1 text-[10px] text-slate-400">Switch branch to filter student records.</p>
         </div>
         <nav className="flex-1 overflow-y-auto px-4 pb-5 pt-2">
-          {navGroups.map((group) => <div key={group.label} className="mb-6"><p className="mb-2 px-3 text-[9px] font-bold tracking-[0.16em] text-slate-400">{group.label}</p><div className="space-y-1">{group.items.map((item) => { const Icon = item.icon; const active = activeNav === item.label; return <button key={item.label} onClick={() => navTo(item.label)} className={"group flex w-full items-center gap-3 rounded-lg px-3 py-2.5 text-left text-[12px] font-medium transition " + (active ? "bg-[#edf3f8] text-[#244d73]" : "text-slate-500 hover:bg-slate-50 hover:text-slate-800")}><Icon size={17} /><span className="flex-1">{item.label}</span>{!["Overview", "Branches", "Students", "Admissions", "Seat management", "Memberships", "Attendance", "Fee collection"].includes(item.label) && <span className="text-[9px] text-slate-300">Soon</span>}</button>; })}</div></div>)}
+          {navGroups.map((group) => <div key={group.label} className="mb-6"><p className="mb-2 px-3 text-[9px] font-bold tracking-[0.16em] text-slate-400">{group.label}</p><div className="space-y-1">{group.items.map((item) => { const Icon = item.icon; const active = activeNav === item.label; return <button key={item.label} onClick={() => navTo(item.label)} className={"group flex w-full items-center gap-3 rounded-lg px-3 py-2.5 text-left text-[12px] font-medium transition " + (active ? "bg-[#edf3f8] text-[#244d73]" : "text-slate-500 hover:bg-slate-50 hover:text-slate-800")}><Icon size={17} /><span className="flex-1">{item.label}</span>{!["Overview", "Branches", "Students", "Admissions", "Seat management", "Memberships", "Attendance", "Fee collection", "Staff"].includes(item.label) && <span className="text-[9px] text-slate-300">Soon</span>}</button>; })}</div></div>)}
         </nav>
         <div className="border-t border-slate-100 p-4"><div className="mb-3 rounded-xl bg-[#f5f8fb] p-3"><div className="mb-2 flex items-center gap-2 text-[#315d84]"><Sparkles size={14} /><span className="text-[10px] font-bold">DEMO WORKSPACE</span></div><p className="text-[10px] leading-4 text-slate-500">Sample data only. Changes are saved in this browser.</p></div><div className="flex items-center gap-2 px-2 text-[10px] text-slate-400"><ShieldCheck size={13} /> Local demo mode</div></div>
       </aside>
@@ -414,7 +464,7 @@ export default function Home() {
         <main className="mx-auto max-w-[1500px] px-4 py-7 sm:px-7 lg:px-9 lg:py-8">
           {notice && <div className="mb-5 flex items-start justify-between gap-3 rounded-xl border border-blue-100 bg-blue-50 px-4 py-3 text-xs text-blue-800"><div className="flex items-start gap-2"><AlertCircle size={15} className="mt-0.5 shrink-0" /><span>{notice}</span></div><button onClick={() => setNotice("")} aria-label="Dismiss message"><X size={14} /></button></div>}
 
-          {activeNav === "Overview" && <Overview branches={branches} students={students} onNavigate={navTo} branchName={branchName} />}
+          {activeNav === "Overview" && <Overview branches={branches} students={students} staffCount={staff.length} onNavigate={navTo} branchName={branchName} />}
           {activeNav === "Branches" && <section>
             <div className="mb-7 flex flex-col justify-between gap-4 sm:flex-row sm:items-end"><div><p className="mb-1 text-[11px] font-medium text-slate-400">ORGANIZATION SETUP</p><h2 className="text-[25px] font-bold tracking-tight text-slate-900">Branches</h2><p className="mt-1.5 text-xs text-slate-500">Create and manage all your study library locations.</p></div><button onClick={openNewBranch} className="inline-flex items-center justify-center gap-2 rounded-lg bg-[#244d73] px-4 py-2.5 text-[11px] font-semibold text-white hover:bg-[#193c5e]"><Plus size={15} /> Add branch</button></div>
             <div className="mb-5 grid grid-cols-1 gap-3 sm:grid-cols-3"><Metric label="Total branches" value={String(branches.length)} detail="Across your organization" icon={<Building2 size={16} />} /><Metric label="Active branches" value={String(activeBranches.length)} detail="Currently operating" icon={<CheckCircle2 size={16} />} /><Metric label="Total seat capacity" value={branches.reduce((sum, branch) => sum + branch.capacity, 0).toLocaleString("en-IN")} detail="Configured seats" icon={<Armchair size={16} />} /></div>
@@ -449,6 +499,15 @@ export default function Home() {
             </div>
           </section>}
 
+          {activeNav === "Staff" && <section>
+            <div className="mb-7 flex flex-col justify-between gap-4 sm:flex-row sm:items-end"><div><p className="mb-1 text-[11px] font-medium text-slate-400">TEAM DIRECTORY</p><h2 className="text-[25px] font-bold tracking-tight text-slate-900">Staff management</h2><p className="mt-1.5 text-xs text-slate-500">Manage staff profiles, roles, branch assignments and employment status.</p></div><button onClick={openNewStaff} className="inline-flex items-center justify-center gap-2 rounded-lg bg-[#244d73] px-4 py-2.5 text-[11px] font-semibold text-white"><Plus size={14}/> Add staff member</button></div>
+            <div className="mb-5 grid grid-cols-1 gap-3 sm:grid-cols-3"><Metric label="Total staff" value={String(staff.length)} detail="All staff records" icon={<Users size={16}/>} /><Metric label="Active staff" value={String(activeStaffCount)} detail="Currently active" icon={<CheckCircle2 size={16}/>} /><Metric label="Inactive staff" value={String(staff.length-activeStaffCount)} detail="Not currently active" icon={<UserRound size={16}/>} /></div>
+            <div className="rounded-xl border border-slate-200 bg-white"><div className="flex flex-col gap-3 border-b border-slate-100 p-4 sm:flex-row sm:items-center sm:p-5"><div className="relative flex-1"><Search size={13} className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400"/><input value={staffSearch} onChange={(event)=>setStaffSearch(event.target.value)} placeholder="Search name, staff ID, phone or email..." className="h-9 w-full rounded-lg border border-slate-200 pl-8 pr-3 text-[10px] outline-none focus:border-[#7894ad]"/></div><select value={staffRoleFilter} onChange={(event)=>setStaffRoleFilter(event.target.value)} className="h-9 rounded-lg border border-slate-200 bg-white px-3 text-[10px] text-slate-600"><option value="all">All roles</option><option>Manager</option><option>Receptionist</option><option>Librarian</option><option>Other</option></select><select value={staffStatusFilter} onChange={(event)=>setStaffStatusFilter(event.target.value)} className="h-9 rounded-lg border border-slate-200 bg-white px-3 text-[10px] text-slate-600"><option value="all">All statuses</option><option>Active</option><option>Inactive</option></select></div>
+              <div className="overflow-x-auto"><table className="w-full min-w-[900px] text-left"><thead><tr className="bg-slate-50/80 text-[9px] font-semibold uppercase tracking-wider text-slate-400"><th className="px-5 py-3">Staff member</th><th className="px-4 py-3">Contact</th><th className="px-4 py-3">Role</th><th className="px-4 py-3">Branch</th><th className="px-4 py-3">Status</th><th className="px-5 py-3 text-right">Actions</th></tr></thead><tbody>{visibleStaff.map((person)=><tr key={person.id} className="border-t border-slate-100 hover:bg-slate-50/60"><td className="px-5 py-3"><p className="text-[10px] font-semibold text-slate-800">{person.name}</p><p className="mt-0.5 text-[9px] text-slate-400">{person.id}</p></td><td className="px-4 py-3"><p className="text-[10px] text-slate-700">{person.phone}</p><p className="mt-0.5 text-[9px] text-slate-400">{person.email || "No email"}</p></td><td className="px-4 py-3 text-[10px] text-slate-600">{person.role}</td><td className="px-4 py-3 text-[10px] text-slate-600">{branchName(person.branchId)}</td><td className="px-4 py-3"><span className={"rounded-full px-2 py-1 text-[9px] font-semibold "+(person.status==="Active"?"bg-emerald-50 text-emerald-700":"bg-slate-100 text-slate-500")}>{person.status}</span></td><td className="px-5 py-3"><div className="flex justify-end gap-1"><button onClick={()=>editStaff(person)} className="rounded-md p-2 text-slate-400 hover:bg-slate-100 hover:text-[#315d84]" aria-label={"Edit "+person.name}><Pencil size={14}/></button><button onClick={()=>deleteStaff(person)} className="rounded-md p-2 text-slate-400 hover:bg-rose-50 hover:text-rose-600" aria-label={"Delete "+person.name}><Trash2 size={14}/></button></div></td></tr>)}{visibleStaff.length===0&&<tr><td colSpan={6} className="px-6 py-14 text-center text-[11px] text-slate-400">{staff.length===0?"No staff members added yet. Add your first staff profile.":"No staff members match these filters."}</td></tr>}</tbody></table></div>
+            </div>
+            <p className="mt-3 rounded-lg bg-amber-50 px-4 py-3 text-[10px] leading-4 text-amber-800">Demo only: staff details are stored in this browser. This module does not create login accounts, permissions, payroll or attendance tracking.</p>
+          </section>}
+
           {activeNav === "Attendance" && <section>
             <div className="mb-7 flex flex-col justify-between gap-4 sm:flex-row sm:items-end"><div><p className="mb-1 text-[11px] font-medium text-slate-400">DAILY LIBRARY OPERATIONS</p><h2 className="text-[25px] font-bold tracking-tight text-slate-900">Attendance management</h2><p className="mt-1.5 text-xs text-slate-500">Mark daily attendance, review student history and monitor monthly attendance rates.</p></div><div className="flex flex-wrap gap-2"><button onClick={() => markAttendanceForAll("Present")} className="rounded-lg border border-slate-200 bg-white px-3 py-2.5 text-[10px] font-semibold text-emerald-700">Mark all present</button><button onClick={() => markAttendanceForAll("Absent")} className="rounded-lg border border-slate-200 bg-white px-3 py-2.5 text-[10px] font-semibold text-rose-600">Mark all absent</button></div></div>
             <div className="mb-5 grid grid-cols-1 gap-3 sm:grid-cols-2 xl:grid-cols-4"><Metric label="Present today" value={String(attendanceCounts.Present)} detail={"For " + attendanceDate} icon={<CheckCircle2 size={16} />} /><Metric label="Absent today" value={String(attendanceCounts.Absent)} detail="Recorded absences" icon={<AlertCircle size={16} />} /><Metric label="Late today" value={String(attendanceCounts.Late)} detail="Recorded late arrivals" icon={<Clock3 size={16} />} /><Metric label="Marked today" value={String(selectedDayRecords.length)} detail={"Of " + attendanceStudents.length + " visible active students"} icon={<ClipboardCheck size={16} />} /></div>
@@ -479,11 +538,13 @@ export default function Home() {
             </div><p className="mt-3 rounded-lg bg-amber-50 px-4 py-3 text-[10px] leading-4 text-amber-800">Demo only: plan fees and membership dates are sample records. Renewal is recorded here; fee collection and payment tracking will be a separate module. Data stays in this browser.</p>
           </section>}
 
-          {!["Overview", "Branches", "Students", "Admissions", "Seat management", "Memberships", "Attendance", "Fee collection"].includes(activeNav) && <div className="rounded-xl border border-dashed border-slate-300 bg-white px-6 py-16 text-center"><div className="mx-auto flex h-12 w-12 items-center justify-center rounded-xl bg-[#edf3f8] text-[#315d84]"><Sparkles size={20} /></div><h2 className="mt-4 text-[17px] font-bold text-slate-900">{activeNav} module is next</h2><p className="mx-auto mt-2 max-w-md text-xs leading-5 text-slate-500">This item is visible in the demo navigation, but its workflow has not been built yet. Branch and student management are available now.</p><button onClick={() => navTo("Overview")} className="mt-5 rounded-lg bg-[#244d73] px-4 py-2.5 text-[10px] font-semibold text-white">Back to overview</button></div>}
+          {!["Overview", "Branches", "Students", "Admissions", "Seat management", "Memberships", "Attendance", "Fee collection", "Staff"].includes(activeNav) && <div className="rounded-xl border border-dashed border-slate-300 bg-white px-6 py-16 text-center"><div className="mx-auto flex h-12 w-12 items-center justify-center rounded-xl bg-[#edf3f8] text-[#315d84]"><Sparkles size={20} /></div><h2 className="mt-4 text-[17px] font-bold text-slate-900">{activeNav} module is next</h2><p className="mx-auto mt-2 max-w-md text-xs leading-5 text-slate-500">This item is visible in the demo navigation, but its workflow has not been built yet. Branch and student management are available now.</p><button onClick={() => navTo("Overview")} className="mt-5 rounded-lg bg-[#244d73] px-4 py-2.5 text-[10px] font-semibold text-white">Back to overview</button></div>}
 
           <footer className="mt-8 flex flex-col justify-between gap-2 border-t border-slate-200 pt-5 text-[9px] text-slate-400 sm:flex-row"><p>© 2026 StudyDesk · Library Management Demo</p><p>Demo data only · Stored locally in this browser</p></footer>
         </main>
       </div>
+
+      {showStaffForm && <Modal title={editingStaff ? "Edit staff profile" : "Add staff member"} onClose={() => setShowStaffForm(false)}><form onSubmit={saveStaff} className="space-y-3"><div><label className={labelClass}>Full name *</label><input required value={staffForm.name} onChange={(event)=>setStaffForm({...staffForm,name:event.target.value})} placeholder="Enter staff full name" className={inputClass}/></div><div className="grid grid-cols-2 gap-3"><div><label className={labelClass}>Mobile number *</label><input required inputMode="numeric" pattern="[0-9]{10}" maxLength={10} value={staffForm.phone} onChange={(event)=>setStaffForm({...staffForm,phone:event.target.value.replace(/[^0-9]/g,"")})} placeholder="10-digit number" className={inputClass}/></div><div><label className={labelClass}>Email address</label><input type="email" value={staffForm.email} onChange={(event)=>setStaffForm({...staffForm,email:event.target.value})} placeholder="name@example.com" className={inputClass}/></div></div><div><label className={labelClass}>Address</label><input value={staffForm.address} onChange={(event)=>setStaffForm({...staffForm,address:event.target.value})} placeholder="Staff address (optional)" className={inputClass}/></div><div className="grid grid-cols-2 gap-3"><div><label className={labelClass}>Branch *</label><select required value={staffForm.branchId} onChange={(event)=>setStaffForm({...staffForm,branchId:event.target.value})} className={inputClass}>{activeBranches.map((item)=><option key={item.id} value={item.id}>{item.name}</option>)}</select></div><div><label className={labelClass}>Role *</label><select value={staffForm.role} onChange={(event)=>setStaffForm({...staffForm,role:event.target.value as StaffRole})} className={inputClass}><option>Manager</option><option>Receptionist</option><option>Librarian</option><option>Other</option></select></div></div><div><label className={labelClass}>Status</label><select value={staffForm.status} onChange={(event)=>setStaffForm({...staffForm,status:event.target.value as "Active" | "Inactive"})} className={inputClass}><option>Active</option><option>Inactive</option></select></div><p className="rounded-lg bg-amber-50 px-3 py-2 text-[10px] leading-4 text-amber-800">Demo note: staff ID is generated automatically. Do not enter real personal information.</p><div className="flex justify-end gap-2 border-t border-slate-100 pt-4"><button type="button" onClick={()=>setShowStaffForm(false)} className="rounded-lg border border-slate-200 px-4 py-2.5 text-[10px] font-semibold text-slate-600">Cancel</button><button type="submit" className="rounded-lg bg-[#244d73] px-4 py-2.5 text-[10px] font-semibold text-white">{editingStaff?"Save changes":"Add staff member"}</button></div></form></Modal>}
 
       {showPaymentForm && <Modal title="Record fee payment" onClose={()=>setShowPaymentForm(false)}><form onSubmit={savePayment} className="space-y-3"><div><label className={labelClass}>Membership *</label><select required value={paymentForm.membershipId} onChange={(e)=>setPaymentForm({...paymentForm,membershipId:e.target.value,amount:String(dueFor(memberships.find(m=>m.id===e.target.value)!))})} className={inputClass}>{memberships.filter(m=>dueFor(m)>0).map(m=>{const student=students.find(s=>s.id===m.studentId);return <option key={m.id} value={m.id}>{student?.name||m.studentId} · Due ₹{dueFor(m).toLocaleString("en-IN")}</option>;})}</select></div><div className="grid grid-cols-2 gap-3"><div><label className={labelClass}>Amount received (₹) *</label><input required type="number" min="1" max={dueFor(memberships.find(m=>m.id===paymentForm.membershipId) || {id:"",fee:0} as Membership)} step="0.01" value={paymentForm.amount} onChange={(e)=>setPaymentForm({...paymentForm,amount:e.target.value})} className={inputClass}/></div><div><label className={labelClass}>Payment date *</label><input required type="date" value={paymentForm.date} onChange={(e)=>setPaymentForm({...paymentForm,date:e.target.value})} className={inputClass}/></div></div><div><label className={labelClass}>Payment method *</label><select value={paymentForm.method} onChange={(e)=>setPaymentForm({...paymentForm,method:e.target.value as FeePayment["method"]})} className={inputClass}><option>Cash</option><option>UPI</option><option>Bank transfer</option></select></div><div><label className={labelClass}>Transaction reference (optional)</label><input value={paymentForm.reference} onChange={(e)=>setPaymentForm({...paymentForm,reference:e.target.value})} placeholder="UPI transaction ID / bank reference" className={inputClass}/></div><div><label className={labelClass}>Note (optional)</label><input value={paymentForm.note} onChange={(e)=>setPaymentForm({...paymentForm,note:e.target.value})} placeholder="Payment note" className={inputClass}/></div><p className="rounded-lg bg-blue-50 px-3 py-2 text-[10px] leading-4 text-blue-800">Partial payments are allowed. The amount cannot exceed the outstanding balance. No payment gateway is connected.</p><div className="flex justify-end gap-2 border-t border-slate-100 pt-4"><button type="button" onClick={()=>setShowPaymentForm(false)} className="rounded-lg border border-slate-200 px-4 py-2.5 text-[10px] font-semibold text-slate-600">Cancel</button><button type="submit" className="rounded-lg bg-[#244d73] px-4 py-2.5 text-[10px] font-semibold text-white">Save payment</button></div></form></Modal>}
       {showPlanForm && <Modal title="Create membership plan" onClose={() => setShowPlanForm(false)}><form onSubmit={savePlan} className="space-y-3"><div><label className={labelClass}>Plan name *</label><input required value={planForm.name} onChange={(e) => setPlanForm({ ...planForm, name: e.target.value })} placeholder="e.g. Weekend plan" className={inputClass} /></div><div><label className={labelClass}>Duration in days *</label><input required type="number" min="1" step="1" value={planForm.durationDays} onChange={(e) => setPlanForm({ ...planForm, durationDays: e.target.value })} className={inputClass} /></div><div><label className={labelClass}>Fee (₹) *</label><input required type="number" min="0" step="1" value={planForm.fee} onChange={(e) => setPlanForm({ ...planForm, fee: e.target.value })} placeholder="e.g. 500" className={inputClass} /></div><div className="flex justify-end gap-2 border-t border-slate-100 pt-4"><button type="button" onClick={() => setShowPlanForm(false)} className="rounded-lg border border-slate-200 px-4 py-2.5 text-[10px] font-semibold text-slate-600">Cancel</button><button type="submit" className="rounded-lg bg-[#244d73] px-4 py-2.5 text-[10px] font-semibold text-white">Create plan</button></div></form></Modal>}
@@ -509,9 +570,9 @@ function Modal({ title, onClose, children }: { title: string; onClose: () => voi
   return <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/40 p-4" onMouseDown={(event) => { if (event.target === event.currentTarget) onClose(); }}><div className="max-h-[90vh] w-full max-w-[470px] overflow-y-auto rounded-2xl bg-white p-5 shadow-2xl sm:p-6"><div className="mb-5 flex items-center justify-between"><h3 className="text-[16px] font-bold text-slate-900">{title}</h3><button onClick={onClose} className="rounded-lg p-2 text-slate-400 hover:bg-slate-100" aria-label="Close dialog"><X size={17} /></button></div>{children}</div></div>;
 }
 
-function Overview({ branches, students, onNavigate, branchName }: { branches: Branch[]; students: Student[]; onNavigate: (label: string) => void; branchName: (id: string) => string }) {
+function Overview({ branches, students, staffCount, onNavigate, branchName }: { branches: Branch[]; students: Student[]; staffCount: number; onNavigate: (label: string) => void; branchName: (id: string) => string }) {
   const active = students.filter((student) => student.status === "Active").length;
-  const stats = [{ label: "Total students", value: students.length.toLocaleString("en-IN"), note: "Across all branches", icon: Users }, { label: "Active memberships", value: active.toLocaleString("en-IN"), note: "Currently active", icon: ShieldCheck }, { label: "Total branches", value: String(branches.length), note: "Configured locations", icon: Building2 }, { label: "Seat capacity", value: branches.reduce((sum, branch) => sum + branch.capacity, 0).toLocaleString("en-IN"), note: "Configured seats", icon: Armchair }];
+  const stats = [{ label: "Total students", value: students.length.toLocaleString("en-IN"), note: "Across all branches", icon: Users }, { label: "Active memberships", value: active.toLocaleString("en-IN"), note: "Currently active", icon: ShieldCheck }, { label: "Total branches", value: String(branches.length), note: "Configured locations", icon: Building2 }, { label: "Seat capacity", value: branches.reduce((sum, branch) => sum + branch.capacity, 0).toLocaleString("en-IN"), note: "Configured seats", icon: Armchair }, { label: "Staff members", value: String(staffCount), note: "Across all branches", icon: UserRound }];
   const recent = students.slice(0, 5);
   return <><div className="mb-7 flex flex-col justify-between gap-4 sm:flex-row sm:items-end"><div><p className="mb-1 text-[11px] font-medium text-slate-400">Good day, Admin</p><h2 className="text-[25px] font-bold tracking-tight text-slate-900">Library overview</h2><p className="mt-1.5 text-xs text-slate-500">A snapshot of your study library operations.</p></div><button onClick={() => onNavigate("Admissions")} className="inline-flex items-center justify-center gap-2 rounded-lg bg-[#244d73] px-4 py-2.5 text-[11px] font-semibold text-white hover:bg-[#193c5e]"><Plus size={15} /> New admission</button></div>
     <section className="grid grid-cols-1 gap-3 sm:grid-cols-2 xl:grid-cols-4">{stats.map((stat) => { const Icon = stat.icon; return <div key={stat.label} className="rounded-xl border border-slate-200 bg-white p-5"><div className="flex items-center justify-between"><p className="text-[11px] font-medium text-slate-500">{stat.label}</p><span className="flex h-8 w-8 items-center justify-center rounded-lg bg-[#edf3f8] text-[#315d84]"><Icon size={16} /></span></div><p className="mt-3 text-[25px] font-bold tracking-tight text-slate-900">{stat.value}</p><p className="mt-1 text-[10px] text-slate-400">{stat.note}</p></div>; })}</section>
