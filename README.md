@@ -44,7 +44,7 @@ Open http://localhost:3000.
 - [ ] Attendance and fee collection
 - [ ] Reports
 - [ ] Browser and build testing
-- [ ] Vercel deployment (requires explicit approval)
+- [ ] Vercel preview validation
 
 ## Demo-only notice
 
