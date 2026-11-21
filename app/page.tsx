@@ -12,6 +12,8 @@ import {
 type Branch = { id: string; name: string; location: string; capacity: number; active: boolean };
 type Admission = { id: string; name: string; phone: string; branchId: string; plan: string; admissionDate: string; photo: string; status: "Pending" | "Approved" | "Rejected" };
 type Seat = { id: string; branchId: string; number: string; mode: "Fixed" | "Shift-based"; active: boolean; allocations: { studentId: string; shift: string }[] };
+type MembershipPlan = { id: string; name: string; durationDays: number; fee: number; active: boolean };
+type Membership = { id: string; studentId: string; planId: string; branchId: string; startDate: string; endDate: string; fee: number };
 type Student = {
   id: string; name: string; phone: string; branchId: string; plan: string;
   admissionDate: string; status: "Active" | "Inactive";
@@ -46,6 +48,19 @@ export default function Home() {
   const [students, setStudents] = useState<Student[]>(seedStudents);
   const [admissions, setAdmissions] = useState<Admission[]>([]);
   const [seats, setSeats] = useState<Seat[]>([]);
+  const [plans, setPlans] = useState<MembershipPlan[]>([
+    { id: "PLAN-MON", name: "Monthly", durationDays: 30, fee: 500, active: true },
+    { id: "PLAN-QTR", name: "Quarterly", durationDays: 90, fee: 1300, active: true },
+    { id: "PLAN-HALF", name: "Half-yearly", durationDays: 180, fee: 2400, active: true },
+    { id: "PLAN-YEAR", name: "Yearly", durationDays: 365, fee: 4200, active: true }
+  ]);
+  const [memberships, setMemberships] = useState<Membership[]>([]);
+  const [membershipSearch, setMembershipSearch] = useState("");
+  const [membershipStatus, setMembershipStatus] = useState("all");
+  const [showPlanForm, setShowPlanForm] = useState(false);
+  const [showMembershipForm, setShowMembershipForm] = useState(false);
+  const [planForm, setPlanForm] = useState({ name: "", durationDays: "30", fee: "" });
+  const [membershipForm, setMembershipForm] = useState({ studentId: "", planId: "PLAN-MON", startDate: new Date().toISOString().slice(0, 10) });
   const [seatSearch, setSeatSearch] = useState("");
   const [seatBranch, setSeatBranch] = useState("all");
   const [seatNumber, setSeatNumber] = useState("");
@@ -77,6 +92,8 @@ export default function Home() {
         if (Array.isArray(parsed.students)) setStudents(parsed.students);
         if (Array.isArray(parsed.admissions)) setAdmissions(parsed.admissions);
         if (Array.isArray(parsed.seats)) setSeats(parsed.seats);
+        if (Array.isArray(parsed.plans)) setPlans(parsed.plans);
+        if (Array.isArray(parsed.memberships)) setMemberships(parsed.memberships);
       }
     } catch {
       setNotice("Saved demo data could not be read. Sample data is loaded.");
@@ -85,8 +102,8 @@ export default function Home() {
   }, []);
 
   useEffect(() => {
-    if (loaded) localStorage.setItem("studydesk-demo-v1", JSON.stringify({ branches, students, admissions, seats }));
-  }, [branches, students, admissions, seats, loaded]);
+    if (loaded) localStorage.setItem("studydesk-demo-v1", JSON.stringify({ branches, students, admissions, seats, plans, memberships }));
+  }, [branches, students, admissions, seats, plans, memberships, loaded]);
 
   const branchName = (id: string) => branches.find((branch) => branch.id === id)?.name || "Branch unavailable";
   const activeBranches = branches.filter((branch) => branch.active);
@@ -97,6 +114,16 @@ export default function Home() {
   }), [branchFilteredStudents, studentSearch]);
   const visibleBranches = useMemo(() => branches.filter((branch) => (branch.name + " " + branch.location).toLowerCase().includes(branchSearch.toLowerCase())), [branches, branchSearch]);
   const activeStudents = students.filter((student) => student.status === "Active").length;
+  const dateOnly = new Date().toISOString().slice(0, 10);
+  const membershipState = (membership: Membership) => membership.endDate < dateOnly ? "Expired" : membership.endDate <= new Date(Date.now() + 7 * 86400000).toISOString().slice(0, 10) ? "Expiring soon" : "Active";
+  const currentMembership = (studentId: string) => memberships.filter((item) => item.studentId === studentId).sort((a, b) => b.endDate.localeCompare(a.endDate))[0];
+  const visibleMemberships = memberships.filter((item) => {
+    const student = students.find((s) => s.id === item.studentId);
+    const status = membershipState(item);
+    const q = membershipSearch.trim().toLowerCase();
+    const matchesSearch = !q || (student?.name || "").toLowerCase().includes(q) || item.studentId.toLowerCase().includes(q);
+    return matchesSearch && (membershipStatus === "all" || status === membershipStatus) && (selectedBranch === "all" || item.branchId === selectedBranch);
+  });
   const today = new Intl.DateTimeFormat("en-IN", { weekday: "long", day: "numeric", month: "long", year: "numeric" }).format(new Date());
 
   function openNewBranch() {
@@ -228,6 +255,44 @@ export default function Home() {
     setSeats((current) => current.filter((s) => s.id !== seat.id)); setNotice("Seat removed.");
   }
 
+  function savePlan(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    const name = planForm.name.trim(); const durationDays = Number(planForm.durationDays); const fee = Number(planForm.fee);
+    if (!name || !Number.isInteger(durationDays) || durationDays < 1 || !Number.isFinite(fee) || fee < 0) return;
+    if (plans.some((p) => p.name.toLowerCase() === name.toLowerCase())) { setNotice("A plan with this name already exists."); return; }
+    setPlans((current) => [...current, { id: "PLAN-" + Date.now(), name, durationDays, fee, active: true }]);
+    setPlanForm({ name: "", durationDays: "30", fee: "" }); setShowPlanForm(false); setNotice("Membership plan created.");
+  }
+
+  function openMembershipForm(studentId = "") {
+    const eligible = students.find((s) => s.id === studentId && s.status === "Active") || students.find((s) => s.status === "Active");
+    setMembershipForm({ studentId: eligible?.id || "", planId: plans.find((p) => p.active)?.id || "", startDate: new Date().toISOString().slice(0, 10) });
+    setShowMembershipForm(true);
+  }
+
+  function saveMembership(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    const student = students.find((s) => s.id === membershipForm.studentId && s.status === "Active");
+    const plan = plans.find((p) => p.id === membershipForm.planId && p.active);
+    if (!student || !plan || !membershipForm.startDate) { setNotice("Choose an active student and an active plan."); return; }
+    const start = new Date(membershipForm.startDate + "T00:00:00");
+    const end = new Date(start); end.setDate(end.getDate() + plan.durationDays - 1);
+    const endDate = end.getFullYear() + "-" + String(end.getMonth()+1).padStart(2,"0") + "-" + String(end.getDate()).padStart(2,"0");
+    setMemberships((current) => [{ id: "MEM-" + Date.now(), studentId: student.id, planId: plan.id, branchId: student.branchId, startDate: membershipForm.startDate, endDate, fee: plan.fee }, ...current]);
+    setShowMembershipForm(false); setNotice(plan.name + " membership assigned to " + student.name + ".");
+  }
+
+  function renewMembership(membership: Membership) {
+    const plan = plans.find((p) => p.id === membership.planId) || plans.find((p) => p.active);
+    if (!plan) { setNotice("Create an active plan before renewing."); return; }
+    const base = membership.endDate >= dateOnly ? membership.endDate : dateOnly;
+    const start = new Date(base + "T00:00:00"); start.setDate(start.getDate() + 1);
+    const end = new Date(start); end.setDate(end.getDate() + plan.durationDays - 1);
+    const fmt = (d: Date) => d.getFullYear() + "-" + String(d.getMonth()+1).padStart(2,"0") + "-" + String(d.getDate()).padStart(2,"0");
+    setMemberships((current) => [{ id: "MEM-" + Date.now(), studentId: membership.studentId, planId: plan.id, branchId: membership.branchId, startDate: fmt(start), endDate: fmt(end), fee: plan.fee }, ...current]);
+    setNotice("Membership renewed using " + plan.name + " plan until " + fmt(end) + ".");
+  }
+
   function deleteStudent(student: Student) {
     if (!window.confirm("Delete student " + student.name + "?")) return;
     setStudents((current) => current.filter((item) => item.id !== student.id));
@@ -258,7 +323,7 @@ export default function Home() {
           <p className="mt-1.5 px-1 text-[10px] text-slate-400">Switch branch to filter student records.</p>
         </div>
         <nav className="flex-1 overflow-y-auto px-4 pb-5 pt-2">
-          {navGroups.map((group) => <div key={group.label} className="mb-6"><p className="mb-2 px-3 text-[9px] font-bold tracking-[0.16em] text-slate-400">{group.label}</p><div className="space-y-1">{group.items.map((item) => { const Icon = item.icon; const active = activeNav === item.label; return <button key={item.label} onClick={() => navTo(item.label)} className={"group flex w-full items-center gap-3 rounded-lg px-3 py-2.5 text-left text-[12px] font-medium transition " + (active ? "bg-[#edf3f8] text-[#244d73]" : "text-slate-500 hover:bg-slate-50 hover:text-slate-800")}><Icon size={17} /><span className="flex-1">{item.label}</span>{!["Overview", "Branches", "Students", "Admissions", "Seat management"].includes(item.label) && <span className="text-[9px] text-slate-300">Soon</span>}</button>; })}</div></div>)}
+          {navGroups.map((group) => <div key={group.label} className="mb-6"><p className="mb-2 px-3 text-[9px] font-bold tracking-[0.16em] text-slate-400">{group.label}</p><div className="space-y-1">{group.items.map((item) => { const Icon = item.icon; const active = activeNav === item.label; return <button key={item.label} onClick={() => navTo(item.label)} className={"group flex w-full items-center gap-3 rounded-lg px-3 py-2.5 text-left text-[12px] font-medium transition " + (active ? "bg-[#edf3f8] text-[#244d73]" : "text-slate-500 hover:bg-slate-50 hover:text-slate-800")}><Icon size={17} /><span className="flex-1">{item.label}</span>{!["Overview", "Branches", "Students", "Admissions", "Seat management", "Memberships"].includes(item.label) && <span className="text-[9px] text-slate-300">Soon</span>}</button>; })}</div></div>)}
         </nav>
         <div className="border-t border-slate-100 p-4"><div className="mb-3 rounded-xl bg-[#f5f8fb] p-3"><div className="mb-2 flex items-center gap-2 text-[#315d84]"><Sparkles size={14} /><span className="text-[10px] font-bold">DEMO WORKSPACE</span></div><p className="text-[10px] leading-4 text-slate-500">Sample data only. Changes are saved in this browser.</p></div><div className="flex items-center gap-2 px-2 text-[10px] text-slate-400"><ShieldCheck size={13} /> Local demo mode</div></div>
       </aside>
@@ -307,12 +372,23 @@ export default function Home() {
             </div>
           </section>}
 
-          {!["Overview", "Branches", "Students", "Admissions", "Seat management"].includes(activeNav) && <div className="rounded-xl border border-dashed border-slate-300 bg-white px-6 py-16 text-center"><div className="mx-auto flex h-12 w-12 items-center justify-center rounded-xl bg-[#edf3f8] text-[#315d84]"><Sparkles size={20} /></div><h2 className="mt-4 text-[17px] font-bold text-slate-900">{activeNav} module is next</h2><p className="mx-auto mt-2 max-w-md text-xs leading-5 text-slate-500">This item is visible in the demo navigation, but its workflow has not been built yet. Branch and student management are available now.</p><button onClick={() => navTo("Overview")} className="mt-5 rounded-lg bg-[#244d73] px-4 py-2.5 text-[10px] font-semibold text-white">Back to overview</button></div>}
+          {activeNav === "Memberships" && <section>
+            <div className="mb-7 flex flex-col justify-between gap-4 sm:flex-row sm:items-end"><div><p className="mb-1 text-[11px] font-medium text-slate-400">MEMBERSHIP OPERATIONS</p><h2 className="text-[25px] font-bold tracking-tight text-slate-900">Memberships</h2><p className="mt-1.5 text-xs text-slate-500">Set plan pricing, assign memberships and track expiry dates.</p></div><div className="flex flex-wrap gap-2"><button onClick={() => { setPlanForm({ name: "", durationDays: "30", fee: "" }); setShowPlanForm(true); }} className="rounded-lg border border-slate-200 bg-white px-4 py-2.5 text-[11px] font-semibold text-slate-600">Manage plans</button><button onClick={() => openMembershipForm()} disabled={!students.some((s) => s.status === "Active") || !plans.some((p) => p.active)} className="inline-flex items-center justify-center gap-2 rounded-lg bg-[#244d73] px-4 py-2.5 text-[11px] font-semibold text-white hover:bg-[#193c5e] disabled:opacity-50"><Plus size={14} /> Assign membership</button></div></div>
+            <div className="mb-5 grid grid-cols-1 gap-3 sm:grid-cols-2 xl:grid-cols-4"><Metric label="Membership records" value={String(memberships.length)} detail="All assignments and renewals" icon={<ShieldCheck size={16} />} /><Metric label="Active" value={String(memberships.filter((m) => membershipState(m) === "Active").length)} detail="More than 7 days remaining" icon={<CheckCircle2 size={16} />} /><Metric label="Expiring soon" value={String(memberships.filter((m) => membershipState(m) === "Expiring soon").length)} detail="Expires within 7 days" icon={<AlertCircle size={16} />} /><Metric label="Expired" value={String(memberships.filter((m) => membershipState(m) === "Expired").length)} detail="Renewal required" icon={<CalendarDays size={16} />} /></div>
+            <div className="mb-5 rounded-xl border border-slate-200 bg-white p-5"><div className="mb-3 flex items-center justify-between"><div><h3 className="text-[13px] font-bold text-slate-900">Membership plans</h3><p className="mt-1 text-[10px] text-slate-400">Editable demo pricing · duration is in calendar days</p></div><span className="text-[10px] text-slate-400">{plans.filter((p) => p.active).length} active plans</span></div><div className="grid grid-cols-1 gap-3 sm:grid-cols-2 xl:grid-cols-4">{plans.map((plan) => <div key={plan.id} className="rounded-lg border border-slate-100 bg-slate-50/70 p-4"><div className="flex items-start justify-between gap-2"><p className="text-[11px] font-semibold text-slate-800">{plan.name}</p><span className={"rounded-full px-2 py-1 text-[9px] font-semibold " + (plan.active ? "bg-emerald-50 text-emerald-700" : "bg-slate-200 text-slate-500")}>{plan.active ? "Active" : "Inactive"}</span></div><p className="mt-3 text-[21px] font-bold text-slate-900">₹{plan.fee.toLocaleString("en-IN")}</p><p className="mt-1 text-[10px] text-slate-400">{plan.durationDays} days</p><button onClick={() => setPlans((current) => current.map((p) => p.id === plan.id ? { ...p, active: !p.active } : p))} className="mt-3 text-[10px] font-semibold text-[#315d84] hover:underline">{plan.active ? "Deactivate plan" : "Activate plan"}</button></div>)}</div></div>
+            <div className="rounded-xl border border-slate-200 bg-white"><div className="flex flex-col gap-3 border-b border-slate-100 px-5 py-4 sm:px-6"><div className="flex flex-wrap items-center justify-between gap-2"><div><h3 className="text-[13px] font-bold text-slate-900">Student memberships</h3><p className="mt-1 text-[10px] text-slate-400">Showing {visibleMemberships.length} matching records · renewal creates a new record</p></div><span className="rounded-full bg-[#edf3f8] px-2.5 py-1 text-[9px] font-semibold text-[#315d84]">{selectedBranch === "all" ? "All branches" : branchName(selectedBranch)}</span></div><div className="grid grid-cols-1 gap-2 sm:grid-cols-[1fr_190px]"><div className="relative"><Search size={13} className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" /><input value={membershipSearch} onChange={(e) => setMembershipSearch(e.target.value)} placeholder="Search student name or ID..." className="h-9 w-full rounded-lg border border-slate-200 pl-8 pr-3 text-[10px] outline-none focus:border-[#7894ad]" /></div><select value={membershipStatus} onChange={(e) => setMembershipStatus(e.target.value)} className="h-9 rounded-lg border border-slate-200 bg-white px-3 text-[10px] text-slate-600"><option value="all">All statuses</option><option>Active</option><option>Expiring soon</option><option>Expired</option></select></div></div>
+              <div className="overflow-x-auto"><table className="w-full min-w-[820px] text-left"><thead><tr className="bg-slate-50/80 text-[9px] font-semibold uppercase tracking-wider text-slate-400"><th className="px-5 py-3 sm:px-6">Student</th><th className="px-4 py-3">Branch</th><th className="px-4 py-3">Plan</th><th className="px-4 py-3">Start date</th><th className="px-4 py-3">Expiry date</th><th className="px-4 py-3">Fee</th><th className="px-4 py-3">Status</th><th className="px-4 py-3">Action</th></tr></thead><tbody>{visibleMemberships.map((m) => { const student = students.find((s) => s.id === m.studentId); const plan = plans.find((p) => p.id === m.planId); const status = membershipState(m); return <tr key={m.id} className="border-t border-slate-100 hover:bg-slate-50/60"><td className="px-5 py-3 sm:px-6"><p className="text-[10px] font-semibold text-slate-800">{student?.name || "Student removed"}</p><p className="mt-0.5 text-[9px] text-slate-400">{m.studentId}</p></td><td className="px-4 py-3 text-[10px] text-slate-500">{branchName(m.branchId)}</td><td className="px-4 py-3 text-[10px] text-slate-600">{plan?.name || "Previous plan"}</td><td className="px-4 py-3 text-[10px] text-slate-500">{m.startDate}</td><td className="px-4 py-3 text-[10px] text-slate-500">{m.endDate}</td><td className="px-4 py-3 text-[10px] text-slate-600">₹{m.fee.toLocaleString("en-IN")}</td><td className="px-4 py-3"><span className={"rounded-full px-2 py-1 text-[9px] font-semibold " + (status === "Active" ? "bg-emerald-50 text-emerald-700" : status === "Expiring soon" ? "bg-amber-50 text-amber-700" : "bg-rose-50 text-rose-600")}>{status}</span></td><td className="px-4 py-3"><button onClick={() => renewMembership(m)} className="rounded-md border border-slate-200 px-2.5 py-1.5 text-[9px] font-semibold text-[#315d84] hover:bg-slate-50">Renew</button></td></tr>; })}{visibleMemberships.length === 0 && <tr><td colSpan={8} className="px-6 py-12 text-center text-[11px] text-slate-400">No membership records match your filters. Assign a membership to an active student to begin.</td></tr>}</tbody></table></div>
+            </div><p className="mt-3 rounded-lg bg-amber-50 px-4 py-3 text-[10px] leading-4 text-amber-800">Demo only: plan fees and membership dates are sample records. Renewal is recorded here; fee collection and payment tracking will be a separate module. Data stays in this browser.</p>
+          </section>}
+
+          {!["Overview", "Branches", "Students", "Admissions", "Seat management", "Memberships"].includes(activeNav) && <div className="rounded-xl border border-dashed border-slate-300 bg-white px-6 py-16 text-center"><div className="mx-auto flex h-12 w-12 items-center justify-center rounded-xl bg-[#edf3f8] text-[#315d84]"><Sparkles size={20} /></div><h2 className="mt-4 text-[17px] font-bold text-slate-900">{activeNav} module is next</h2><p className="mx-auto mt-2 max-w-md text-xs leading-5 text-slate-500">This item is visible in the demo navigation, but its workflow has not been built yet. Branch and student management are available now.</p><button onClick={() => navTo("Overview")} className="mt-5 rounded-lg bg-[#244d73] px-4 py-2.5 text-[10px] font-semibold text-white">Back to overview</button></div>}
 
           <footer className="mt-8 flex flex-col justify-between gap-2 border-t border-slate-200 pt-5 text-[9px] text-slate-400 sm:flex-row"><p>© 2026 StudyDesk · Library Management Demo</p><p>Demo data only · Stored locally in this browser</p></footer>
         </main>
       </div>
 
+      {showPlanForm && <Modal title="Create membership plan" onClose={() => setShowPlanForm(false)}><form onSubmit={savePlan} className="space-y-3"><div><label className={labelClass}>Plan name *</label><input required value={planForm.name} onChange={(e) => setPlanForm({ ...planForm, name: e.target.value })} placeholder="e.g. Weekend plan" className={inputClass} /></div><div><label className={labelClass}>Duration in days *</label><input required type="number" min="1" step="1" value={planForm.durationDays} onChange={(e) => setPlanForm({ ...planForm, durationDays: e.target.value })} className={inputClass} /></div><div><label className={labelClass}>Fee (₹) *</label><input required type="number" min="0" step="1" value={planForm.fee} onChange={(e) => setPlanForm({ ...planForm, fee: e.target.value })} placeholder="e.g. 500" className={inputClass} /></div><div className="flex justify-end gap-2 border-t border-slate-100 pt-4"><button type="button" onClick={() => setShowPlanForm(false)} className="rounded-lg border border-slate-200 px-4 py-2.5 text-[10px] font-semibold text-slate-600">Cancel</button><button type="submit" className="rounded-lg bg-[#244d73] px-4 py-2.5 text-[10px] font-semibold text-white">Create plan</button></div></form></Modal>}
+      {showMembershipForm && <Modal title="Assign membership" onClose={() => setShowMembershipForm(false)}><form onSubmit={saveMembership} className="space-y-3"><div><label className={labelClass}>Active student *</label><select required value={membershipForm.studentId} onChange={(e) => setMembershipForm({ ...membershipForm, studentId: e.target.value })} className={inputClass}><option value="">Select student</option>{students.filter((s) => s.status === "Active").map((s) => <option key={s.id} value={s.id}>{s.name} · {s.id} · {branchName(s.branchId)}</option>)}</select></div><div><label className={labelClass}>Membership plan *</label><select required value={membershipForm.planId} onChange={(e) => setMembershipForm({ ...membershipForm, planId: e.target.value })} className={inputClass}>{plans.filter((p) => p.active).map((p) => <option key={p.id} value={p.id}>{p.name} · {p.durationDays} days · ₹{p.fee}</option>)}</select></div><div><label className={labelClass}>Start date *</label><input required type="date" value={membershipForm.startDate} onChange={(e) => setMembershipForm({ ...membershipForm, startDate: e.target.value })} className={inputClass} /></div><p className="rounded-lg bg-blue-50 px-3 py-2 text-[10px] leading-4 text-blue-800">Expiry is calculated automatically from the selected plan. This does not record a payment.</p><div className="flex justify-end gap-2 border-t border-slate-100 pt-4"><button type="button" onClick={() => setShowMembershipForm(false)} className="rounded-lg border border-slate-200 px-4 py-2.5 text-[10px] font-semibold text-slate-600">Cancel</button><button type="submit" className="rounded-lg bg-[#244d73] px-4 py-2.5 text-[10px] font-semibold text-white">Assign membership</button></div></form></Modal>}
       {showBranchForm && <Modal title={editingBranch ? "Edit branch" : "Add new branch"} onClose={() => setShowBranchForm(false)}><form onSubmit={saveBranch} className="space-y-4"><div><label className={labelClass}>Branch name *</label><input required value={branchForm.name} onChange={(event) => setBranchForm({ ...branchForm, name: event.target.value })} placeholder="e.g. Main Market" className={inputClass} /></div><div><label className={labelClass}>Location / address *</label><input required value={branchForm.location} onChange={(event) => setBranchForm({ ...branchForm, location: event.target.value })} placeholder="City, state" className={inputClass} /></div><div><label className={labelClass}>Total seat capacity *</label><input required min="1" type="number" value={branchForm.capacity} onChange={(event) => setBranchForm({ ...branchForm, capacity: event.target.value })} className={inputClass} /></div><div className="flex justify-end gap-2 border-t border-slate-100 pt-4"><button type="button" onClick={() => setShowBranchForm(false)} className="rounded-lg border border-slate-200 px-4 py-2.5 text-[10px] font-semibold text-slate-600">Cancel</button><button type="submit" className="rounded-lg bg-[#244d73] px-4 py-2.5 text-[10px] font-semibold text-white">{editingBranch ? "Save changes" : "Create branch"}</button></div></form></Modal>}
 
       {showAdmissionForm && <Modal title="New admission application" onClose={() => setShowAdmissionForm(false)}><form onSubmit={saveAdmission} className="space-y-3"><div><label className={labelClass}>Applicant full name *</label><input required value={admissionForm.name} onChange={(event) => setAdmissionForm({ ...admissionForm, name: event.target.value })} placeholder="Enter full name" className={inputClass} /></div><div><label className={labelClass}>Mobile number *</label><input required inputMode="numeric" pattern="[0-9]{10}" maxLength={10} value={admissionForm.phone} onChange={(event) => setAdmissionForm({ ...admissionForm, phone: event.target.value.replace(/[^0-9]/g, "") })} placeholder="10-digit mobile number" className={inputClass} /></div><div><label className={labelClass}>Branch *</label><select required value={admissionForm.branchId} onChange={(event) => setAdmissionForm({ ...admissionForm, branchId: event.target.value })} className={inputClass}>{activeBranches.map((b) => <option key={b.id} value={b.id}>{b.name}</option>)}</select></div><div className="grid grid-cols-2 gap-3"><div><label className={labelClass}>Membership plan</label><select value={admissionForm.plan} onChange={(event) => setAdmissionForm({ ...admissionForm, plan: event.target.value })} className={inputClass}><option>Monthly</option><option>Quarterly</option><option>Half-yearly</option><option>Yearly</option><option>Daily</option></select></div><div><label className={labelClass}>Admission date</label><input type="date" required value={admissionForm.admissionDate} onChange={(event) => setAdmissionForm({ ...admissionForm, admissionDate: event.target.value })} className={inputClass} /></div></div><div><label className={labelClass}>Applicant photo (optional)</label><input type="file" accept="image/png,image/jpeg,image/webp" className={inputClass} onChange={(event) => { const file = event.target.files?.[0]; if (!file) return; if (file.size > 700 * 1024) { setNotice("Photo must be 700 KB or smaller for this browser demo."); event.target.value = ""; return; } const reader = new FileReader(); reader.onload = () => setAdmissionForm((current) => ({ ...current, photo: String(reader.result || "") })); reader.readAsDataURL(file); }} /><p className="mt-1 text-[9px] text-slate-400">JPG, PNG or WebP · Max 700 KB · Stored in this browser only</p>{admissionForm.photo && <img src={admissionForm.photo} alt="Applicant preview" className="mt-2 h-16 w-16 rounded-lg object-cover" />}</div><p className="rounded-lg bg-amber-50 px-3 py-2 text-[10px] leading-4 text-amber-800">Demo only. Use fictional details and sample images. Do not upload real student documents or personal data.</p><div className="flex justify-end gap-2 border-t border-slate-100 pt-4"><button type="button" onClick={() => setShowAdmissionForm(false)} className="rounded-lg border border-slate-200 px-4 py-2.5 text-[10px] font-semibold text-slate-600">Cancel</button><button type="submit" className="rounded-lg bg-[#244d73] px-4 py-2.5 text-[10px] font-semibold text-white">Submit application</button></div></form></Modal>}
