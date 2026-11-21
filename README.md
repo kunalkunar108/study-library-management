@@ -8,7 +8,19 @@ A browser-based demonstration of study library operations for prospective client
 - TypeScript
 - Tailwind CSS v4
 - Lucide icons
-- Browser localStorage for demo persistence (planned)
+- Browser localStorage for demo persistence
+
+## Available workflows
+
+- Corporate overview dashboard with live counts from demo records
+- Add, edit and delete branches
+- Branch capacity and student count overview
+- Add and edit student profiles
+- Automatic demo student ID generation
+- Delete student records
+- Search students by name, ID or phone
+- Filter student records by branch
+- Save changes in the current browser using localStorage
 
 ## Local development
 
@@ -25,13 +37,15 @@ Open http://localhost:3000.
 
 - [x] Project foundation
 - [x] Corporate application shell and dashboard
-- [ ] Branch and student management
-- [ ] Admissions, seats and memberships
+- [x] Branch management demo workflows
+- [x] Student management demo workflows
+- [ ] Admissions enhancements and student documents
+- [ ] Seats and memberships
 - [ ] Attendance and fee collection
-- [ ] Reports and demo data persistence
-- [ ] Browser testing
+- [ ] Reports
+- [ ] Browser and build testing
 - [ ] Vercel deployment (requires explicit approval)
 
 ## Demo-only notice
 
-This project is a frontend demonstration. It is not intended for real student records, real payments, or production library operations. Do not enter sensitive personal information.
+This project is a frontend demonstration. It is not intended for real student records, real payments, or production library operations. Do not enter sensitive personal information. Data is stored locally in the browser and is not synchronized between devices or users.
