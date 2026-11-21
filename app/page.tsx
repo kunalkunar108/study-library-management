@@ -19,6 +19,7 @@ type AttendanceStatus = "Present" | "Absent" | "Late";
 type AttendanceRecord = { id: string; studentId: string; branchId: string; date: string; status: AttendanceStatus };
 type StaffRole = "Manager" | "Receptionist" | "Librarian" | "Other";
 type StaffMember = { id: string; name: string; phone: string; email: string; address: string; branchId: string; role: StaffRole; status: "Active" | "Inactive" };
+type LibrarySettings = { libraryName: string; logoText: string; address: string; phone: string; email: string; ownerName: string; openingTime: string; closingTime: string; defaultPlanId: string; workingDays: string[]; lateAfterMinutes: number };
 type Student = {
   id: string; name: string; phone: string; branchId: string; plan: string;
   admissionDate: string; status: "Active" | "Inactive";
@@ -37,6 +38,9 @@ const seedStudents: Student[] = [
   { id: "STU-2405", name: "Ananya Das", phone: "9876543213", branchId: "BR-001", plan: "Monthly", admissionDate: "2026-11-18", status: "Active" },
   { id: "STU-2404", name: "Rahul Raj", phone: "9876543214", branchId: "BR-002", plan: "Half-yearly", admissionDate: "2026-11-17", status: "Inactive" }
 ];
+
+const defaultLibrarySettings: LibrarySettings = { libraryName: "StudyDesk", logoText: "SD", address: "Dumka, Jharkhand", phone: "", email: "", ownerName: "Admin", openingTime: "06:00", closingTime: "22:00", defaultPlanId: "PLAN-MON", workingDays: ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Sunday"], lateAfterMinutes: 10 };
+const weekdays = ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Sunday"];
 
 const navGroups = [
   { label: "WORKSPACE", items: [{ label: "Overview", icon: LayoutDashboard }, { label: "Branches", icon: Building2 }, { label: "Students", icon: Users }, { label: "Admissions", icon: GraduationCap }] },
@@ -90,6 +94,7 @@ export default function Home() {
   const [seatNumber, setSeatNumber] = useState("");
   const [seatMode, setSeatMode] = useState<"Fixed" | "Shift-based">("Fixed");
   const [seatFormBranch, setSeatFormBranch] = useState(seedBranches[0].id);
+  const [librarySettings, setLibrarySettings] = useState<LibrarySettings>(defaultLibrarySettings);
   const [loaded, setLoaded] = useState(false);
   const [selectedBranch, setSelectedBranch] = useState("all");
   const [mobileNavOpen, setMobileNavOpen] = useState(false);
@@ -121,6 +126,7 @@ export default function Home() {
         if (Array.isArray(parsed.payments)) setPayments(parsed.payments);
         if (Array.isArray(parsed.attendance)) setAttendanceRecords(parsed.attendance);
         if (Array.isArray(parsed.staff)) setStaff(parsed.staff);
+        if (parsed.librarySettings && typeof parsed.librarySettings === "object") setLibrarySettings({ ...defaultLibrarySettings, ...parsed.librarySettings, workingDays: Array.isArray(parsed.librarySettings.workingDays) ? parsed.librarySettings.workingDays : defaultLibrarySettings.workingDays });
       }
     } catch {
       setNotice("Saved demo data could not be read. Sample data is loaded.");
@@ -129,8 +135,21 @@ export default function Home() {
   }, []);
 
   useEffect(() => {
-    if (loaded) localStorage.setItem("studydesk-demo-v1", JSON.stringify({ branches, students, admissions, seats, plans, memberships, payments, attendance: attendanceRecords, staff }));
+    if (loaded) localStorage.setItem("studydesk-demo-v1", JSON.stringify({ branches, students, admissions, seats, plans, memberships, payments, attendance: attendanceRecords, staff, librarySettings }));
   }, [branches, students, admissions, seats, plans, memberships, payments, attendanceRecords, staff, loaded]);
+
+  function exportDemoBackup() {
+    const backup = { exportedAt: new Date().toISOString(), app: "StudyDesk demo", version: 1, branches, students, admissions, seats, plans, memberships, payments, attendance: attendanceRecords, staff, librarySettings };
+    const blob = new Blob([JSON.stringify(backup, null, 2)], { type: "application/json" });
+    const url = URL.createObjectURL(blob); const link = document.createElement("a"); link.href = url; link.download = "studydesk-backup-" + new Date().toISOString().slice(0, 10) + ".json"; link.click(); URL.revokeObjectURL(url);
+    setNotice("Demo backup downloaded as JSON.");
+  }
+  function resetDemoWorkspace() {
+    if (!window.confirm("Reset this browser demo? All branches, students, admissions, seats, memberships, payments, attendance, staff and settings will be replaced with the original sample setup. This cannot be undone. Download a backup first if you need one.")) return;
+    setBranches(seedBranches); setStudents(seedStudents); setAdmissions([]); setSeats([]);
+    setPlans([{ id: "PLAN-MON", name: "Monthly", durationDays: 30, fee: 500, active: true }, { id: "PLAN-QTR", name: "Quarterly", durationDays: 90, fee: 1300, active: true }, { id: "PLAN-HALF", name: "Half-yearly", durationDays: 180, fee: 2400, active: true }, { id: "PLAN-YEAR", name: "Yearly", durationDays: 365, fee: 4200, active: true }]);
+    setMemberships([]); setPayments([]); setAttendanceRecords([]); setStaff([]); setLibrarySettings(defaultLibrarySettings); setSelectedBranch("all"); setNotice("Demo workspace reset to its original sample setup.");
+  }
 
   const branchName = (id: string) => branches.find((branch) => branch.id === id)?.name || "Branch unavailable";
   const activeBranches = branches.filter((branch) => branch.active);
@@ -468,7 +487,7 @@ export default function Home() {
       {mobileNavOpen && <button aria-label="Close navigation" className="fixed inset-0 z-30 bg-slate-950/35 lg:hidden" onClick={() => setMobileNavOpen(false)} />}
       <aside className={"fixed inset-y-0 left-0 z-40 flex w-[258px] flex-col border-r border-slate-200 bg-white transition-transform duration-200 lg:translate-x-0 " + (mobileNavOpen ? "translate-x-0" : "-translate-x-full")}>
         <div className="flex h-[76px] items-center justify-between border-b border-slate-100 px-6">
-          <div className="flex items-center gap-3"><div className="flex h-10 w-10 items-center justify-center rounded-xl bg-[#244d73] text-white"><BookOpen size={21} /></div><div><p className="text-[17px] font-bold tracking-tight text-slate-900">StudyDesk</p><p className="text-[10px] font-semibold uppercase tracking-[0.16em] text-slate-400">Library management</p></div></div>
+          <div className="flex items-center gap-3"><div className="flex h-10 w-10 items-center justify-center rounded-xl bg-[#244d73] text-[12px] font-bold text-white">{librarySettings.logoText || "SD"}</div><div><p className="text-[17px] font-bold tracking-tight text-slate-900">{librarySettings.libraryName || "StudyDesk"}</p><p className="text-[10px] font-semibold uppercase tracking-[0.16em] text-slate-400">Library management</p></div></div>
           <button className="rounded-lg p-2 text-slate-400 hover:bg-slate-100 lg:hidden" onClick={() => setMobileNavOpen(false)} aria-label="Close menu"><X size={18} /></button>
         </div>
         <div className="px-4 pb-3 pt-5">
@@ -488,7 +507,7 @@ export default function Home() {
       <div className="min-h-screen lg:pl-[258px]">
         <header className="sticky top-0 z-20 flex h-[76px] items-center justify-between border-b border-slate-200 bg-white/95 px-4 backdrop-blur sm:px-7 lg:px-9">
           <div className="flex min-w-0 items-center gap-3"><button className="rounded-lg p-2 text-slate-500 hover:bg-slate-100 lg:hidden" onClick={() => setMobileNavOpen(true)} aria-label="Open menu"><Menu size={20} /></button><div className="min-w-0"><div className="flex items-center gap-2 text-[11px] text-slate-400"><span>Workspace</span><span>/</span><span className="truncate font-semibold text-slate-600">{activeNav}</span></div><h1 className="mt-1 truncate text-[17px] font-bold tracking-tight text-slate-900">{activeNav}</h1></div></div>
-          <div className="flex items-center gap-2 sm:gap-4"><div className="hidden items-center gap-2 rounded-lg border border-slate-200 px-3 py-2 text-[11px] text-slate-500 md:flex"><CalendarDays size={14} /><span>{today}</span></div><div className="hidden h-8 w-px bg-slate-200 sm:block" /><div className="flex items-center gap-2"><div className="flex h-8 w-8 items-center justify-center rounded-full bg-[#e8eef4] text-[11px] font-bold text-[#244d73]">AK</div><div className="hidden sm:block"><p className="text-[11px] font-semibold text-slate-800">Admin</p><p className="text-[9px] text-slate-400">Library owner</p></div></div></div>
+          <div className="flex items-center gap-2 sm:gap-4"><div className="hidden items-center gap-2 rounded-lg border border-slate-200 px-3 py-2 text-[11px] text-slate-500 md:flex"><CalendarDays size={14} /><span>{today}</span></div><div className="hidden h-8 w-px bg-slate-200 sm:block" /><div className="flex items-center gap-2"><div className="flex h-8 w-8 items-center justify-center rounded-full bg-[#e8eef4] text-[11px] font-bold text-[#244d73]">{(librarySettings.ownerName || "Admin").slice(0,2).toUpperCase()}</div><div className="hidden sm:block"><p className="text-[11px] font-semibold text-slate-800">{librarySettings.ownerName || "Admin"}</p><p className="text-[9px] text-slate-400">Library owner</p></div></div></div>
         </header>
 
         <main className="mx-auto max-w-[1500px] px-4 py-7 sm:px-7 lg:px-9 lg:py-8">
@@ -545,6 +564,17 @@ export default function Home() {
             <p className="mt-3 rounded-lg bg-amber-50 px-4 py-3 text-[10px] leading-4 text-amber-800">Demo analytics: reports use records saved in this browser only. Fee totals reflect manual entries, not verified transactions. Outstanding balances are current membership balances; seat utilization is a current snapshot. CSV includes payment, admission and attendance rows for the selected period.</p>
           </section>}
 
+          {activeNav === "Settings" && <section>
+            <div className="mb-7"><p className="mb-1 text-[11px] font-medium text-slate-400">WORKSPACE CONFIGURATION</p><h2 className="text-[25px] font-bold tracking-tight text-slate-900">Settings</h2><p className="mt-1.5 text-xs text-slate-500">Configure the library profile, operating hours and default workspace preferences.</p></div>
+            <div className="grid grid-cols-1 gap-5 xl:grid-cols-2">
+              <div className="rounded-xl border border-slate-200 bg-white p-5"><div className="mb-4"><h3 className="text-[13px] font-bold text-slate-900">Library profile</h3><p className="mt-1 text-[10px] text-slate-400">Shown as the identity of this demo workspace.</p></div><div className="space-y-3"><div className="grid grid-cols-[1fr_100px] gap-3"><div><label className={labelClass}>Library name</label><input value={librarySettings.libraryName} onChange={(e)=>setLibrarySettings({...librarySettings,libraryName:e.target.value})} className={inputClass}/></div><div><label className={labelClass}>Logo initials</label><input maxLength={3} value={librarySettings.logoText} onChange={(e)=>setLibrarySettings({...librarySettings,logoText:e.target.value.toUpperCase()})} className={inputClass}/></div></div><div><label className={labelClass}>Address</label><input value={librarySettings.address} onChange={(e)=>setLibrarySettings({...librarySettings,address:e.target.value})} className={inputClass}/></div><div className="grid grid-cols-1 gap-3 sm:grid-cols-2"><div><label className={labelClass}>Contact phone</label><input value={librarySettings.phone} onChange={(e)=>setLibrarySettings({...librarySettings,phone:e.target.value})} className={inputClass}/></div><div><label className={labelClass}>Contact email</label><input type="email" value={librarySettings.email} onChange={(e)=>setLibrarySettings({...librarySettings,email:e.target.value})} className={inputClass}/></div></div><div><label className={labelClass}>Owner / admin display name</label><input value={librarySettings.ownerName} onChange={(e)=>setLibrarySettings({...librarySettings,ownerName:e.target.value})} className={inputClass}/></div><div className="rounded-lg bg-slate-50 p-3 text-[10px] text-slate-500">Preview identity: <strong>{librarySettings.libraryName || "Your library"}</strong> · {librarySettings.address || "Add an address"}</div></div></div>
+              <div className="rounded-xl border border-slate-200 bg-white p-5"><div className="mb-4"><h3 className="text-[13px] font-bold text-slate-900">Operating hours</h3><p className="mt-1 text-[10px] text-slate-400">Default hours for this library workspace.</p></div><div className="grid grid-cols-2 gap-3"><div><label className={labelClass}>Opening time</label><input type="time" value={librarySettings.openingTime} onChange={(e)=>setLibrarySettings({...librarySettings,openingTime:e.target.value})} className={inputClass}/></div><div><label className={labelClass}>Closing time</label><input type="time" value={librarySettings.closingTime} onChange={(e)=>setLibrarySettings({...librarySettings,closingTime:e.target.value})} className={inputClass}/></div></div><p className="mt-3 rounded-lg bg-blue-50 px-3 py-2 text-[10px] leading-4 text-blue-800">These are workspace-wide reference hours. Separate hours for each branch are not configured in this demo.</p><div className="mt-5 border-t border-slate-100 pt-4"><div className="mb-3"><h3 className="text-[13px] font-bold text-slate-900">Attendance working days</h3><p className="mt-1 text-[10px] text-slate-400">Select the days the library normally operates.</p></div><div className="grid grid-cols-2 gap-2 sm:grid-cols-3">{weekdays.map((day)=><label key={day} className="flex items-center gap-2 rounded-lg border border-slate-100 px-3 py-2 text-[10px] text-slate-600"><input type="checkbox" checked={librarySettings.workingDays.includes(day)} onChange={(e)=>setLibrarySettings({...librarySettings,workingDays:e.target.checked?[...librarySettings.workingDays,day]:librarySettings.workingDays.filter((d)=>d!==day)})} className="accent-[#244d73]"/>{day}</label>)}</div></div></div>
+              <div className="rounded-xl border border-slate-200 bg-white p-5"><div className="mb-4"><h3 className="text-[13px] font-bold text-slate-900">Default preferences</h3><p className="mt-1 text-[10px] text-slate-400">Choose the default membership plan for new assignments.</p></div><div><label className={labelClass}>Default membership plan</label><select value={librarySettings.defaultPlanId} onChange={(e)=>setLibrarySettings({...librarySettings,defaultPlanId:e.target.value})} className={inputClass}>{plans.filter((plan)=>plan.active).map((plan)=><option key={plan.id} value={plan.id}>{plan.name} · ₹{plan.fee.toLocaleString("en-IN")} · {plan.durationDays} days</option>)}</select>{plans.filter((plan)=>plan.active).length===0&&<p className="mt-2 text-[10px] text-amber-700">No active plans. Create or activate a plan in Memberships.</p>}</div><div className="mt-4 flex flex-wrap gap-2"><button onClick={()=>navTo("Memberships")} className="rounded-lg border border-slate-200 px-3 py-2 text-[10px] font-semibold text-slate-600">Manage membership plans</button><button onClick={()=>navTo("Branches")} className="rounded-lg border border-slate-200 px-3 py-2 text-[10px] font-semibold text-slate-600">Manage branches</button></div><div className="mt-4 rounded-lg bg-slate-50 p-3 text-[10px] leading-4 text-slate-500">The selected plan is a saved preference only. Existing membership fees and dates are not changed automatically.</div></div>
+              <div className="rounded-xl border border-slate-200 bg-white p-5"><div className="mb-4"><h3 className="text-[13px] font-bold text-slate-900">Data management</h3><p className="mt-1 text-[10px] text-slate-400">Back up or reset the records saved in this browser.</p></div><div className="flex flex-col gap-3 sm:flex-row"><button onClick={exportDemoBackup} className="rounded-lg bg-[#244d73] px-4 py-2.5 text-[10px] font-semibold text-white">Download full backup (JSON)</button><button onClick={resetDemoWorkspace} className="rounded-lg border border-rose-200 px-4 py-2.5 text-[10px] font-semibold text-rose-600 hover:bg-rose-50">Reset demo workspace</button></div><p className="mt-4 rounded-lg bg-amber-50 px-3 py-2 text-[10px] leading-4 text-amber-800">Important: this is a browser-only demo. Backup files may contain all information entered in the demo. Use fictional data only. Reset permanently replaces the current browser records; download a backup first if needed.</p></div>
+            </div>
+            <p className="mt-4 rounded-lg bg-blue-50 px-4 py-3 text-[10px] leading-4 text-blue-800">Settings are saved automatically in this browser. They are not synchronized across devices or users. Working days and operating hours are configuration references; they do not automatically block attendance marking or control opening access.</p>
+          </section>}
+
           {activeNav === "Staff" && <section>
             <div className="mb-7 flex flex-col justify-between gap-4 sm:flex-row sm:items-end"><div><p className="mb-1 text-[11px] font-medium text-slate-400">TEAM DIRECTORY</p><h2 className="text-[25px] font-bold tracking-tight text-slate-900">Staff management</h2><p className="mt-1.5 text-xs text-slate-500">Manage staff profiles, roles, branch assignments and employment status.</p></div><button onClick={openNewStaff} className="inline-flex items-center justify-center gap-2 rounded-lg bg-[#244d73] px-4 py-2.5 text-[11px] font-semibold text-white"><Plus size={14}/> Add staff member</button></div>
             <div className="mb-5 grid grid-cols-1 gap-3 sm:grid-cols-3"><Metric label="Total staff" value={String(staff.length)} detail="All staff records" icon={<Users size={16}/>} /><Metric label="Active staff" value={String(activeStaffCount)} detail="Currently active" icon={<CheckCircle2 size={16}/>} /><Metric label="Inactive staff" value={String(staff.length-activeStaffCount)} detail="Not currently active" icon={<UserRound size={16}/>} /></div>
@@ -584,7 +614,7 @@ export default function Home() {
             </div><p className="mt-3 rounded-lg bg-amber-50 px-4 py-3 text-[10px] leading-4 text-amber-800">Demo only: plan fees and membership dates are sample records. Renewal is recorded here; fee collection and payment tracking will be a separate module. Data stays in this browser.</p>
           </section>}
 
-          {!["Overview", "Branches", "Students", "Admissions", "Seat management", "Memberships", "Attendance", "Fee collection", "Staff", "Reports"].includes(activeNav) && <div className="rounded-xl border border-dashed border-slate-300 bg-white px-6 py-16 text-center"><div className="mx-auto flex h-12 w-12 items-center justify-center rounded-xl bg-[#edf3f8] text-[#315d84]"><Sparkles size={20} /></div><h2 className="mt-4 text-[17px] font-bold text-slate-900">{activeNav} module is next</h2><p className="mx-auto mt-2 max-w-md text-xs leading-5 text-slate-500">This item is visible in the demo navigation, but its workflow has not been built yet. Branch and student management are available now.</p><button onClick={() => navTo("Overview")} className="mt-5 rounded-lg bg-[#244d73] px-4 py-2.5 text-[10px] font-semibold text-white">Back to overview</button></div>}
+          {!["Overview", "Branches", "Students", "Admissions", "Seat management", "Memberships", "Attendance", "Fee collection", "Staff", "Reports", "Settings"].includes(activeNav) && <div className="rounded-xl border border-dashed border-slate-300 bg-white px-6 py-16 text-center"><div className="mx-auto flex h-12 w-12 items-center justify-center rounded-xl bg-[#edf3f8] text-[#315d84]"><Sparkles size={20} /></div><h2 className="mt-4 text-[17px] font-bold text-slate-900">{activeNav} module is next</h2><p className="mx-auto mt-2 max-w-md text-xs leading-5 text-slate-500">This item is visible in the demo navigation, but its workflow has not been built yet. Branch and student management are available now.</p><button onClick={() => navTo("Overview")} className="mt-5 rounded-lg bg-[#244d73] px-4 py-2.5 text-[10px] font-semibold text-white">Back to overview</button></div>}
 
           <footer className="mt-8 flex flex-col justify-between gap-2 border-t border-slate-200 pt-5 text-[9px] text-slate-400 sm:flex-row"><p>© 2026 StudyDesk · Library Management Demo</p><p>Demo data only · Stored locally in this browser</p></footer>
         </main>
