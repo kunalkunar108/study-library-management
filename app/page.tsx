@@ -19,7 +19,7 @@ type AttendanceStatus = "Present" | "Absent" | "Late";
 type AttendanceRecord = { id: string; studentId: string; branchId: string; date: string; status: AttendanceStatus };
 type StaffRole = "Manager" | "Receptionist" | "Librarian" | "Other";
 type StaffMember = { id: string; name: string; phone: string; email: string; address: string; branchId: string; role: StaffRole; status: "Active" | "Inactive" };
-type LibrarySettings = { libraryName: string; logoText: string; address: string; phone: string; email: string; ownerName: string; openingTime: string; closingTime: string; defaultPlanId: string; workingDays: string[]; lateAfterMinutes: number };
+type LibrarySettings = { libraryName: string; logoText: string; address: string; phone: string; email: string; ownerName: string; openingTime: string; closingTime: string; defaultPlanId: string; workingDays: string[] };
 type Student = {
   id: string; name: string; phone: string; branchId: string; plan: string;
   admissionDate: string; status: "Active" | "Inactive";
@@ -39,7 +39,7 @@ const seedStudents: Student[] = [
   { id: "STU-2404", name: "Rahul Raj", phone: "9876543214", branchId: "BR-002", plan: "Half-yearly", admissionDate: "2026-11-17", status: "Inactive" }
 ];
 
-const defaultLibrarySettings: LibrarySettings = { libraryName: "StudyDesk", logoText: "SD", address: "Dumka, Jharkhand", phone: "", email: "", ownerName: "Admin", openingTime: "06:00", closingTime: "22:00", defaultPlanId: "PLAN-MON", workingDays: ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Sunday"], lateAfterMinutes: 10 };
+const defaultLibrarySettings: LibrarySettings = { libraryName: "StudyDesk", logoText: "SD", address: "Dumka, Jharkhand", phone: "", email: "", ownerName: "Admin", openingTime: "06:00", closingTime: "22:00", defaultPlanId: "PLAN-MON", workingDays: ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Sunday"] };
 const weekdays = ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Sunday"];
 
 const navGroups = [
@@ -442,7 +442,7 @@ export default function Home() {
 
   function openMembershipForm(studentId = "") {
     const eligible = students.find((s) => s.id === studentId && s.status === "Active") || students.find((s) => s.status === "Active");
-    setMembershipForm({ studentId: eligible?.id || "", planId: plans.find((p) => p.active)?.id || "", startDate: new Date().toISOString().slice(0, 10) });
+    setMembershipForm({ studentId: eligible?.id || "", planId: plans.find((p) => p.id === librarySettings.defaultPlanId && p.active)?.id || plans.find((p) => p.active)?.id || "", startDate: new Date().toISOString().slice(0, 10) });
     setShowMembershipForm(true);
   }
 
